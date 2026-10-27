@@ -487,27 +487,39 @@ select:focus-visible {
 
 .hero-section {
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   background: #fff;
 }
 
 .hero-decoration {
-  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(76%, 1050px);
+  height: 88%;
+  border-bottom-left-radius: 38% 48%;
+  background: linear-gradient(135deg, #f0fdf4 0%, #e6f4f1 100%);
+  opacity: .82;
+  pointer-events: none;
 }
 
 .hero-layout {
   position: relative;
   display: grid;
-  min-height: 485px;
-  grid-template-columns: 1.08fr .92fr;
+  grid-template-areas:
+    "copy art"
+    "stats stats";
+  grid-template-columns: minmax(0, 1.55fr) minmax(340px, .85fr);
+  column-gap: 20px;
   align-items: center;
-  padding-top: 28px;
+  padding-top: 38px;
 }
 
 .hero-copy {
+  grid-area: copy;
   position: relative;
   z-index: 2;
-  padding: 8px 0 20px;
+  padding: 4px 0 24px;
 }
 
 .eyebrow,
@@ -526,25 +538,26 @@ select:focus-visible {
 
 .eyebrow {
   width: fit-content;
-  padding: 8px 11px;
-  color: #327f81;
-  border: 1px solid #d6ece6;
+  padding: 9px 13px;
+  color: #0d766e;
+  border: 1px solid #cce9e2;
   border-radius: 30px;
-  background: rgb(255 255 255 / 67%);
+  background: rgb(255 255 255 / 88%);
+  font-size: 11px;
 }
 
 .hero-copy h1 {
-  margin: 20px 0 14px;
+  margin: 22px 0 15px;
   color: #0f172a;
-  font-size: clamp(39px, 4vw, 53px);
+  font-size: clamp(42px, 4.1vw, 58px);
   font-weight: 800;
   line-height: 1.13;
-  letter-spacing: -2.5px;
+  letter-spacing: -2.7px;
 }
 
 .hero-copy h1 span {
   position: relative;
-  color: #ea580c;
+  color: #f26522;
 }
 
 .hero-copy h1 span::after {
@@ -555,26 +568,26 @@ select:focus-visible {
   height: 5px;
   border-radius: 50%;
   content: '';
-  background: #f5c5a9;
+  background: linear-gradient(90deg, #ff7043, #ffc09b);
   transform: rotate(-2deg);
 }
 
 .hero-subtitle {
-  max-width: 472px;
+  max-width: 560px;
   margin: 0;
-  color: #374151;
-  font-size: 13px;
+  color: #475569;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 1.8;
+  line-height: 1.75;
 }
 
 .hero-proof {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 19px;
-  color: #4b5563;
-  font-size: 10px;
+  margin-top: 20px;
+  color: #475569;
+  font-size: 12px;
 }
 
 .hero-proof strong {
@@ -588,8 +601,8 @@ select:focus-visible {
 }
 
 .avatar-stack span {
-  width: 25px;
-  height: 25px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   margin-left: -4px;
@@ -597,7 +610,7 @@ select:focus-visible {
   border: 2px solid #f8fcfa;
   border-radius: 50%;
   background: #f0a286;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 800;
 }
 
@@ -617,33 +630,47 @@ select:focus-visible {
 .job-search {
   position: relative;
   z-index: 3;
-  width: min(730px, calc(100vw - 64px));
-  min-height: 76px;
+  width: min(790px, calc(100vw - 64px));
+  min-height: 82px;
   display: flex;
   align-items: center;
-  margin-top: 25px;
+  margin-top: 28px;
   padding: 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 12px 34px rgb(27 74 72 / 10%);
+  box-shadow: 0 20px 40px rgb(0 0 0 / 8%);
+  transition: border-color 300ms cubic-bezier(.4, 0, .2, 1), box-shadow 300ms cubic-bezier(.4, 0, .2, 1), transform 300ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.job-search:hover,
+.job-search:focus-within {
+  border-color: #14b8a6;
+  box-shadow: 0 20px 42px rgb(13 148 136 / 14%), 0 0 0 3px rgb(20 184 166 / 9%);
 }
 
 .search-field {
   min-width: 0;
-  min-height: 49px;
+  min-height: 52px;
   display: flex;
   flex: 1 1 0;
   align-items: center;
-  gap: 9px;
-  padding: 0 12px;
-  border-right: 1px solid #e5e7eb;
+  gap: 10px;
+  padding: 0 14px;
+  border-right: 1px solid #e2e8f0;
   cursor: text;
 }
 
 .search-field-icon {
   flex: 0 0 auto;
-  color: #49a3a6;
+  color: #94a3b8;
+  transition: color 300ms cubic-bezier(.4, 0, .2, 1), filter 300ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.search-field:hover .search-field-icon,
+.search-field:focus-within .search-field-icon {
+  color: #0d9488;
+  filter: drop-shadow(0 0 5px rgb(20 184 166 / 35%));
 }
 
 .search-field-content {
@@ -653,8 +680,8 @@ select:focus-visible {
 }
 
 .search-label {
-  color: #374151;
-  font-size: 10px;
+  color: #334155;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -663,10 +690,10 @@ select:focus-visible {
   width: 100%;
   min-width: 0;
   padding: 0;
-  color: #374151;
+  color: #334155;
   border: 0;
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   outline: none;
 }
@@ -677,7 +704,7 @@ select:focus-visible {
 }
 
 .search-field input::placeholder {
-  color: #4b5563;
+  color: #475569;
   font-weight: 600;
 }
 
@@ -688,7 +715,13 @@ select:focus-visible {
 
 .select-arrow {
   flex: 0 0 auto;
-  color: #4b5563;
+  color: #475569;
+  transition: color 300ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.search-field:hover .select-arrow,
+.search-field:focus-within .select-arrow {
+  color: #0d9488;
 }
 
 .search-keyword {
@@ -696,8 +729,8 @@ select:focus-visible {
 }
 
 .search-button {
-  min-width: 112px;
-  min-height: 48px;
+  min-width: 122px;
+  min-height: 52px;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -705,51 +738,57 @@ select:focus-visible {
   gap: 8px;
   margin-left: 9px;
   padding: 0 15px;
-  color: white;
+  color: #fff;
   border: 0;
-  border-radius: 8px;
-  background: #ea580c;
-  font-size: 11px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff5722 0%, #ff7a00 100%);
+  font-size: 13px;
   font-weight: 700;
-  transition: background 150ms ease, transform 150ms ease;
+  box-shadow: 0 5px 14px rgb(255 87 34 / 18%);
+  transition: background 300ms cubic-bezier(.4, 0, .2, 1), box-shadow 300ms cubic-bezier(.4, 0, .2, 1), transform 300ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .search-button:hover {
-  background: #c2410c;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #ff7a00 0%, #ff9e00 100%);
+  box-shadow: 0 10px 25px rgb(255 87 34 / 40%);
+  transform: translateY(-3px);
 }
 
 .popular-searches {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 13px;
-  color: #4b5563;
-  font-size: 10px;
+  gap: 8px;
+  margin-top: 14px;
+  color: #475569;
+  font-size: 12px;
 }
 
 .popular-searches button {
-  padding: 5px 9px;
-  color: #374151;
-  border: 1px solid #e0e9e5;
+  padding: 6px 11px;
+  color: #334155;
+  border: 1px solid #e2e8f0;
   border-radius: 20px;
-  background: rgb(255 255 255 / 55%);
-  font-size: 9px;
-  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 300ms cubic-bezier(.4, 0, .2, 1), border-color 300ms cubic-bezier(.4, 0, .2, 1), background 300ms cubic-bezier(.4, 0, .2, 1), transform 300ms cubic-bezier(.4, 0, .2, 1), box-shadow 300ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .popular-searches button:hover {
-  color: #287777;
-  border-color: #49a3a6;
-  background: #fff;
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+  box-shadow: 0 6px 14px rgb(13 148 136 / 20%);
+  transform: translateY(-2px);
 }
 
 .hero-art {
+  grid-area: art;
   position: relative;
   width: 100%;
   height: 415px;
-  align-self: end;
-  margin-top: 0;
+  align-self: center;
+  margin-top: 8px;
 }
 
 .art-sun {
@@ -772,9 +811,8 @@ select:focus-visible {
   border-radius: 50%;
 }
 
-.art-ring,
-.cta-decoration {
-  display: none;
+.art-ring {
+  display: block;
 }
 
 .art-ring-two {
@@ -1040,10 +1078,11 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgb(25 71 67 / 10%);
+  border: 1px solid rgb(226 232 240 / 92%);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 15px 32px rgb(15 23 42 / 10%);
+  backdrop-filter: blur(12px);
 }
 
 .floating-card strong,
@@ -1053,20 +1092,20 @@ select:focus-visible {
 
 .floating-card strong {
   color: #0f172a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 
 .floating-card small {
   margin-top: 4px;
-  color: #4b5563;
-  font-size: 8px;
+  color: #475569;
+  font-size: 10px;
 }
 
 .floating-card-top {
   top: 97px;
-  right: -10px;
-  padding: 10px 12px;
+  right: -3px;
+  padding: 11px 13px;
 }
 
 .floating-icon {
@@ -1080,9 +1119,9 @@ select:focus-visible {
 }
 
 .floating-card-bottom {
-  right: -20px;
+  right: -11px;
   bottom: 50px;
-  padding: 10px 11px;
+  padding: 11px 13px;
 }
 
 .floating-company {
@@ -1103,12 +1142,13 @@ select:focus-visible {
 }
 
 .hero-stats {
+  grid-area: stats;
   min-height: 71px;
   display: flex;
   align-items: center;
-  gap: 65px;
-  margin-top: -2px;
-  border-top: 1px solid #dfece5;
+  gap: 68px;
+  margin-top: 0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .hero-stats > div:not(.trusted-by) {
@@ -1117,20 +1157,25 @@ select:focus-visible {
 }
 
 .hero-stats strong {
-  color: #0f172a;
-  font-size: 17px;
+  background: linear-gradient(90deg, #0f172a, #0d9488);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -.5px;
 }
 
 .hero-stats strong span {
-  color: #ea580c;
+  color: #f26522;
+  -webkit-text-fill-color: #f26522;
 }
 
 .hero-stats small {
-  color: #4b5563;
+  color: #475569;
   font-weight: 600;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .trusted-by {
@@ -1138,12 +1183,12 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  color: #4b5563;
-  font-size: 10px;
+  color: #475569;
+  font-size: 12px;
 }
 
 .trusted-by svg {
-  color: #49a3a6;
+  color: #0d9488;
 }
 
 .section {
@@ -2755,17 +2800,25 @@ select:focus-visible {
   }
 
   .hero-layout {
-    min-height: 450px;
-    grid-template-columns: 1.12fr .88fr;
+    grid-template-areas:
+      "copy"
+      "art"
+      "stats";
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
+    padding-top: 32px;
   }
 
   .hero-copy h1 {
-    font-size: 43px;
+    font-size: clamp(43px, 5vw, 52px);
   }
 
   .hero-art {
-    transform: scale(.86);
-    transform-origin: center right;
+    width: min(420px, 100%);
+    height: 380px;
+    justify-self: center;
+    margin-top: 0;
+    transform: none;
   }
 
   .job-search {
@@ -2926,8 +2979,19 @@ select:focus-visible {
 
   .hero-layout {
     min-height: unset;
+    grid-template-areas:
+      "copy"
+      "art"
+      "stats";
     grid-template-columns: 1fr;
     padding-top: 38px;
+  }
+
+  .hero-decoration {
+    width: 100%;
+    height: 75%;
+    border-bottom-left-radius: 0;
+    opacity: .55;
   }
 
   .hero-copy {
@@ -2987,6 +3051,7 @@ select:focus-visible {
   }
 
   .hero-stats {
+    width: 100%;
     min-height: unset;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
