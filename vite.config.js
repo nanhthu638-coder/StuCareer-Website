@@ -4,10 +4,13 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:3001',
+    plugins: [react(), tailwindcss()],
+    server: {
+        proxy: {
+            '/api': 'http://localhost:3001',
+        },
+        watch: {
+            ignored: ['**/.vs/**', '**/server/data/**'],
+        },
     },
-  },
 })
