@@ -1,0 +1,77 @@
+export const jobs = [
+    {
+        id: 1,
+        title: 'Frontend Developer Intern',
+        company: 'Momo',
+        logo: 'm',
+        tone: 'momo',
+        location: 'TP. Hồ Chí Minh',
+        salary: '4 – 6 triệu / tháng',
+        salaryMin: 4,
+        salaryMax: 6,
+        type: 'Internship',
+        category: 'Công nghệ thông tin',
+        posted: '2 giờ trước',
+        slots: 3,
+        deadline: '30/11/2026',
+        description:
+            'Tham gia xây dựng giao diện web cho các sản phẩm của công ty cùng đội ngũ Frontend, được mentor hướng dẫn trực tiếp.',
+        requirements: [
+            'Sinh viên năm 3 – 4 ngành CNTT hoặc liên quan',
+            'Nắm vững HTML, CSS, JavaScript',
+            'Biết cơ bản về React là một lợi thế',
+        ],
+        benefits: ['Trợ cấp thực tập hằng tháng', 'Được mentor kèm cặp', 'Cơ hội trở thành nhân viên chính thức'],
+    },
+    {
+        id: 2,
+        title: 'Marketing Executive',
+        company: 'Shopee',
+        logo: 'S',
+        tone: 'shopee',
+        location: 'TP. Hồ Chí Minh',
+        salary: '8 – 12 triệu / tháng',
+        salaryMin: 8,
+        salaryMax: 12,
+        type: 'Full-time',
+        category: 'Marketing',
+        posted: '5 giờ trước',
+        slots: 2,
+        deadline: '15/12/2026',
+        description: 'Lên kế hoạch và triển khai các chiến dịch marketing online cho ngành hàng được giao.',
+        requirements: [
+            'Tốt nghiệp ngành Marketing, Truyền thông hoặc liên quan',
+            'Có kỹ năng viết nội dung và phân tích số liệu',
+            'Giao tiếp tốt, làm việc nhóm tốt',
+        ],
+        benefits: ['Thưởng theo hiệu quả công việc', 'Bảo hiểm đầy đủ', 'Môi trường làm việc trẻ, năng động'],
+    },
+    {
+        id: 3,
+        title: 'Business Analyst Intern',
+        company: 'VNG Corporation',
+        logo: 'VNG',
+        tone: 'vng',
+        location: 'TP. Hồ Chí Minh',
+        salary: '5 – 7 triệu / tháng',
+        salaryMin: 5,
+        salaryMax: 7,
+        type: 'Internship',
+        category: 'Kinh doanh',
+        posted: 'Hôm qua',
+        slots: 5,
+        deadline: '20/11/2026',
+        description: 'Hỗ trợ thu thập yêu cầu, phân tích dữ liệu và viết tài liệu cho các dự án sản phẩm.',
+        requirements: [
+            'Sinh viên năm 3 – 4 ngành HTTT, Kinh tế hoặc liên quan',
+            'Sử dụng tốt Excel, biết SQL cơ bản',
+            'Tư duy logic, cẩn thận',
+        ],
+        benefits: ['Trợ cấp thực tập', 'Đào tạo kỹ năng phân tích', 'Có cơ hội ký hợp đồng chính thức'],
+    },
+]
+
+// tìm 1 công việc theo id. ko thấy thì trả về undefined.
+export function getJobById(id) {
+    return jobs.find((job) => job.id === id)
+}
