@@ -34,7 +34,7 @@ function JobHero() {
     <section className="hero-section" aria-labelledby="hero-heading">
       <div className="hero-decoration" aria-hidden="true" />
       <div className="page-shell hero-layout">
-        <motion.div
+      <motion.div
           className="hero-copy"
           variants={containerVariants}
           initial="hidden"
@@ -120,13 +120,13 @@ function JobHero() {
           </motion.div>
         </motion.div>
 
-        <motion.div
+          <motion.div
           className="hero-art"
           aria-label="Minh họa sinh viên đang tìm kiếm cơ hội việc làm"
           initial={shouldReduceMotion ? false : { opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.7, delay: shouldReduceMotion ? 0 : 0.2 }}
-        >
+          >
           <div className="art-sun" />
           <div className="art-ring" />
           <div className="art-ring art-ring-two" />
@@ -152,7 +152,7 @@ function JobHero() {
             aria-label="Hồ sơ nổi bật, nhà tuyển dụng đã xem"
             animate={shouldReduceMotion ? undefined : { y: [0, -8, 0] }}
             transition={{ duration: 4.5, ease: 'easeInOut', repeat: Infinity }}
-          >
+            >
             <span className="floating-icon"><ShieldCheck size={20} /></span>
             <span><strong>Hồ sơ nổi bật</strong><small>Nhà tuyển dụng đã xem</small></span>
           </motion.div>
@@ -162,7 +162,7 @@ function JobHero() {
             aria-label="Frontend Intern tại Momo, Thành phố Hồ Chí Minh"
             animate={shouldReduceMotion ? undefined : { y: [0, -8, 0] }}
             transition={{ duration: 4.5, ease: 'easeInOut', repeat: Infinity, delay: 0.8 }}
-          >
+            >
             <span className="floating-company">M</span>
             <span><strong>Frontend Intern</strong><small>Momo · TP. Hồ Chí Minh</small></span>
             <ArrowUpRight size={17} aria-hidden="true" />
