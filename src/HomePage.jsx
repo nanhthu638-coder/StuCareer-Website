@@ -17,6 +17,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import JobHero from './JobHero.jsx'
+import { jobs } from './jobsData.js'
 
 const categories = [
   { name: 'Công nghệ thông tin', count: '1.240 việc làm', icon: Code2, tone: 'mint' },
@@ -29,43 +30,7 @@ const categories = [
   { name: 'Giáo dục', count: '194 việc làm', icon: GraduationCap, tone: 'lavender' },
 ]
 
-const jobs = [
-  {
-    title: 'Frontend Developer Intern',
-    company: 'Momo',
-    location: 'TP. Hồ Chí Minh',
-    salary: '4 – 6 triệu / tháng',
-    type: 'Internship',
-    tone: 'momo',
-    logo: 'm',
-    category: 'Công nghệ thông tin',
-    posted: '2 giờ trước',
-  },
-  {
-    title: 'Marketing Executive',
-    company: 'Shopee',
-    location: 'TP. Hồ Chí Minh',
-    salary: '8 – 12 triệu / tháng',
-    type: 'Full-time',
-    tone: 'shopee',
-    logo: 'S',
-    category: 'Marketing',
-    posted: '5 giờ trước',
-  },
-  {
-    title: 'Business Analyst Intern',
-    company: 'VNG Corporation',
-    location: 'TP. Hồ Chí Minh',
-    salary: '5 – 7 triệu / tháng',
-    type: 'Internship',
-    tone: 'vng',
-    logo: 'VNG',
-    category: 'Kinh doanh',
-    posted: 'Hôm qua',
-  },
-]
-
-function HomePage() {
+function HomePage({ onViewJob }) {
   return (
     <main id="home">
       <JobHero />
@@ -119,30 +84,36 @@ function HomePage() {
             </span>
           </div>
           <div className="jobs-grid">
-            {jobs.map((job) => (
-              <article className="job-card" key={job.title}>
-                <div className="job-card-top">
-                  <div className={`company-logo logo-${job.tone}`}>{job.logo}</div>
-                  <button
-                    type="button"
-                    className="job-save"
-                    aria-label={`Lưu việc làm ${job.title}`}
-                    aria-pressed="false"
-                  >
-                    <Bookmark size={15} />
-                  </button>
-                </div>
-                <h3>{job.title}</h3>
-                <div className="job-company"><Building2 size={15} />{job.company}<BadgeCheck size={14} className="verified-icon" /></div>
-                <div className="job-tags">
-                  <span className="job-tag">{job.type}</span>
-                  <span className="job-tag"><MapPin size={12} />HCM</span>
-                </div>
-                <div className="job-card-bottom">
-                  <div className="job-salary"><strong>{job.salary}</strong><span><Clock3 size={12} />{job.posted}</span></div>
-                  <button className="apply-button" type="button">Ứng tuyển <ArrowRight size={14} /></button>
-                </div>
-              </article>
+            {jobs.slice(0,3).map((job) => (
+                <article className="job-card" key={job.id}>
+                    <div className="job-card-top">
+                        <div className={`company-logo logo-${job.tone}`}>{job.logo}</div>
+                        <button
+                            type="button"
+                            className="job-save"
+                            aria-label={`Lưu việc làm ${job.title}`}
+                            aria-pressed="false"
+                        >
+                            <Bookmark size={15} />
+                        </button>
+                    </div>
+                    <h3>
+                        <button type="button" className="job-title-link" onClick={() => onViewJob(job.id)}>
+                            {job.title}
+                        </button>
+                    </h3>
+                    <div className="job-company"><Building2 size={15} />{job.company}<BadgeCheck size={14} className="verified-icon" /></div>
+                    <div className="job-tags">
+                        <span className="job-tag">{job.type}</span>
+                        <span className="job-tag"><MapPin size={12} />{job.location}</span>
+                    </div>
+                    <div className="job-card-bottom">
+                        <div className="job-salary"><strong>{job.salary}</strong><span><Clock3 size={12} />{job.posted}</span></div>
+                        <button className="apply-button" type="button" onClick={() => onViewJob(job.id)}>
+                            Xem chi tiết <ArrowRight size={14} />
+                        </button>
+                    </div>
+                </article>
             ))}
           </div>
         </div>
