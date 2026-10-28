@@ -84,7 +84,7 @@ function HomePage({ onViewJob }) {
             </span>
           </div>
           <div className="jobs-grid">
-            {jobs.slice(0,3).map((job) => (
+            {jobs.slice(0,9).map((job) => (
                 <article className="job-card" key={job.id}>
                     <div className="job-card-top">
                         <div className={`company-logo logo-${job.tone}`}>{job.logo}</div>
