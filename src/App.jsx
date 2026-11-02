@@ -4,6 +4,7 @@ import AuthPage from './AuthPage.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
 import './App.css'
+import JobDetail from './JobDetail.jsx'
 
 function getInitials(name) {
   return name
@@ -115,6 +116,7 @@ function AccountOverview({ user }) {
 }
 
 function App() {
+  const [selectedJobId, setSelectedJobId] = useState(null)
   const [page, setPage] = useState('home')
   const [currentUser, setCurrentUser] = useState(null)
   const [transitionState, setTransitionState] = useState('idle')
@@ -139,7 +141,17 @@ function App() {
       setTransitionState('entering')
       navigationTimer.current = window.setTimeout(() => setTransitionState('idle'), transitionDuration)
     }, transitionDuration)
-  }
+    }
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' })
+    }, [page])
+
+    const openJob = (jobId) => {
+        setSelectedJobId(jobId)
+        navigateTo('job')
+        setMenuOpen(false)
+    }
 
   const openAuth = (mode = 'login') => {
     navigateTo(mode)
@@ -207,8 +219,11 @@ function App() {
               {menuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
 
-            <nav className={`main-nav${menuOpen ? ' main-nav-open' : ''}`} aria-label="Điều hướng chính">
-              <a className="nav-active" href="#home" onClick={() => setMenuOpen(false)}>Trang chủ</a>
+                    <nav className={`main-nav${menuOpen ? ' main-nav-open' : ''}`} aria-label="Điều hướng chính">
+                        <a className="nav-active" href="#home" onClick={() => {
+                                if (page !== 'home') navigateTo('home')
+                                setMenuOpen(false)}}
+                        >Trang chủ</a>
               <span className="nav-inactive" aria-disabled="true">Việc làm</span>
               <span className="nav-inactive" aria-disabled="true">Công ty</span>
               <span className="nav-inactive" aria-disabled="true">Liên hệ</span>
@@ -250,7 +265,11 @@ function App() {
           </div>
         </header>
 
-        <HomePage />
+            {page === 'job' ? (
+                <JobDetail jobId={selectedJobId} onBack={() => navigateTo('home')} />
+            ) : (
+                <HomePage onViewJob={openJob} />
+            )}
 
         <footer className="site-footer" id="contact">
           <div className="page-shell footer-inner">
