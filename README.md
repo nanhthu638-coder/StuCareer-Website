@@ -17,6 +17,10 @@ Lệnh trên khởi chạy Vite tại `http://localhost:5173` và API tại `htt
 
 Trong môi trường phát triển, OTP được tạo ngẫu nhiên và hiển thị trong giao diện để tiện thử luồng đặt lại mật khẩu. API không gửi email hoặc SMS thật. Endpoint OTP sẽ từ chối chạy trong môi trường production cho đến khi tích hợp nhà cung cấp gửi mã. Bộ nhớ OTP và mã đặt lại chỉ tồn tại trong thời gian chạy của API.
 
+Để bật hộp thư hỗ trợ, cấu hình đầy đủ `SUPPORT_NAME`, `SUPPORT_EMAIL`, `SUPPORT_PHONE` và `SUPPORT_PASSWORD` trước khi chạy API. Nếu không cấu hình, tài khoản hỗ trợ sẽ không được tạo. Phiên đăng nhập được lưu trong bộ nhớ và hết hạn sau 12 giờ; khởi động lại API sẽ kết thúc các phiên hiện tại.
+
+SQLite và các file WAL/SHM nằm trong `server/data/` và không được Git theo dõi. Không xóa các file này khi ứng dụng đang chạy; hãy sao lưu cả bộ trước khi di chuyển dữ liệu.
+
 ## Kiểm tra
 
 ```bash
@@ -26,4 +30,4 @@ npm run lint
 
 ## Ghi chú triển khai
 
-Đây là nền tảng giao diện và API mẫu, chưa bao gồm phiên đăng nhập, xác thực email/số điện thoại, tích hợp OAuth, nhà cung cấp gửi OTP, giới hạn tốc độ phân tán hoặc quy trình vận hành production. Cần bổ sung các thành phần đó trước khi triển khai xác thực cho người dùng thực.
+Đây là nền tảng giao diện và API mẫu, chưa bao gồm xác thực email/số điện thoại, tích hợp OAuth, nhà cung cấp gửi OTP, lưu phiên đăng nhập bền vững, giới hạn tốc độ phân tán hoặc quy trình vận hành production. Cần bổ sung các thành phần đó trước khi triển khai xác thực cho người dùng thực.
