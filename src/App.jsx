@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowUpRight, BriefcaseBusiness, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserRound, X } from 'lucide-react'
 import AuthPage from './AuthPage.jsx'
+import ContactForm from './ContactForm.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
+import { requestApiJson } from './api.js'
+import SupportDashboard from './SupportDashboard.jsx'
 import './App.css'
 
 function getInitials(name) {
@@ -93,7 +96,7 @@ function AccountOverview({ user }) {
             <span className="account-avatar account-avatar-large" aria-hidden="true">{getInitials(user.name)}</span>
             <div>
               <strong>{user.name}</strong>
-              <span>Thành viên StuWork</span>
+              <span>{user.role === 'support' ? 'Nhân viên hỗ trợ' : 'Thành viên StuWork'}</span>
             </div>
           </div>
           <div className="account-contact"><Mail size={16} /><span>{user.email}</span></div>
@@ -146,6 +149,22 @@ function App() {
     setMenuOpen(false)
   }
 
+  const logoutCurrentUser = async () => {
+    try {
+      await requestApiJson('/api/auth/session', {
+        method: 'DELETE',
+        accessToken: currentUser.accessToken,
+      })
+      showNotice('Bạn đã đăng xuất thành công.')
+    } catch (logoutError) {
+      showNotice(logoutError.message || 'Không thể xác nhận đăng xuất với máy chủ.')
+    } finally {
+      setCurrentUser(null)
+      setMenuOpen(false)
+      if (page === 'support') navigateTo('home')
+    }
+  }
+
   let pageContent
 
   if (page === 'login' || page === 'register') {
@@ -163,8 +182,8 @@ function App() {
             return
           }
 
-          setCurrentUser(result.user)
-          navigateTo('home')
+          setCurrentUser({ ...result.user, accessToken: result.accessToken })
+          navigateTo(result.user.role === 'support' ? 'support' : 'home')
           showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
         }}
       />
@@ -177,6 +196,14 @@ function App() {
           navigateTo('login')
           showNotice(message)
         }}
+      />
+    )
+  } else if (page === 'support' && currentUser?.role === 'support') {
+    pageContent = (
+      <SupportDashboard
+        accessToken={currentUser.accessToken}
+        onHome={() => navigateTo('home')}
+        onLogout={logoutCurrentUser}
       />
     )
   } else {
@@ -211,17 +238,18 @@ function App() {
               <a className="nav-active" href="#home" onClick={() => setMenuOpen(false)}>Trang chủ</a>
               <span className="nav-inactive" aria-disabled="true">Việc làm</span>
               <span className="nav-inactive" aria-disabled="true">Công ty</span>
-              <span className="nav-inactive" aria-disabled="true">Liên hệ</span>
+              <a href="#contact" onClick={() => setMenuOpen(false)}>Liên hệ</a>
               {currentUser ? (
-                <AccountControls
-                  className="mobile-nav-actions account-controls"
-                  user={currentUser}
-                  onLogout={() => {
-                    setCurrentUser(null)
-                    setMenuOpen(false)
-                    showNotice('Bạn đã đăng xuất thành công.')
-                  }}
-                />
+                <>
+                  <AccountControls
+                    className="mobile-nav-actions account-controls"
+                    user={currentUser}
+                    onLogout={logoutCurrentUser}
+                  />
+                  {currentUser.role === 'support' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
+                  )}
+                </>
               ) : (
                 <div className="mobile-nav-actions">
                   <button className="button button-outline" type="button" onClick={() => openAuth('login')}>Đăng nhập</button>
@@ -232,14 +260,16 @@ function App() {
 
             <div className="header-actions">
               {currentUser ? (
-                <AccountControls
-                  className="account-controls"
-                  user={currentUser}
-                  onLogout={() => {
-                    setCurrentUser(null)
-                    showNotice('Bạn đã đăng xuất thành công.')
-                  }}
-                />
+                <>
+                  <AccountControls
+                    className="account-controls"
+                    user={currentUser}
+                    onLogout={logoutCurrentUser}
+                  />
+                  {currentUser.role === 'support' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
+                  )}
+                </>
               ) : (
                 <>
                   <button className="button button-outline" type="button" onClick={() => openAuth('login')}>Đăng nhập</button>
@@ -253,6 +283,14 @@ function App() {
         <HomePage />
 
         <footer className="site-footer" id="contact">
+          <div className="page-shell contact-section">
+            <div className="contact-intro">
+              <span className="contact-eyebrow">CHÚNG TÔI LUÔN SẴN SÀNG LẮNG NGHE</span>
+              <h2>Bạn cần hỗ trợ?</h2>
+              <p>Gửi thắc mắc cho đội ngũ StuWork. Chúng tôi sẽ xem xét và phản hồi qua email.</p>
+            </div>
+            <ContactForm onSubmitted={showNotice} />
+          </div>
           <div className="page-shell footer-inner">
             <a className="brand footer-brand" href="#home">
               <span className="brand-icon"><BriefcaseBusiness size={19} /></span>

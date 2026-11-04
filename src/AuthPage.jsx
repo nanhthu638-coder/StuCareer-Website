@@ -77,7 +77,13 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
       )
       if (isRegister) reset()
       const user = result?.user
-      if (!isRegister && (!user || ['name', 'email', 'phone'].some((field) => typeof user[field] !== 'string'))) {
+      if (!isRegister && (
+        !user
+        || ['name', 'email', 'phone', 'role'].some((field) => typeof user[field] !== 'string')
+        || !['seeker', 'support'].includes(user.role)
+        || typeof result.accessToken !== 'string'
+        || !result.accessToken
+      )) {
         throw new Error('Máy chủ chưa trả về thông tin tài khoản. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
       }
       onSuccess(isRegister ? 'register' : 'login', result)

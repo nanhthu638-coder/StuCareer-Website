@@ -16,20 +16,28 @@ export async function readApiResponse(response) {
   return result
 }
 
-export async function postApiJson(path, body) {
+export async function requestApiJson(path, { method = 'GET', body, accessToken } = {}) {
+  const headers = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+
   let response
   try {
-    response = await fetch(`/api/auth/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    response = await fetch(path, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error('Không thể kết nối máy chủ xác thực. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
+      throw new Error('Không thể kết nối máy chủ. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
     }
     throw error
   }
 
   return readApiResponse(response)
+}
+
+export function postApiJson(path, body) {
+  return requestApiJson(`/api/auth/${path}`, { method: 'POST', body })
 }
