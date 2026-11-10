@@ -52,6 +52,7 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
   const [confirmationRevealed, setConfirmationRevealed] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [role, setRole] = useState('student')
   const { register, handleSubmit, getValues, reset, formState: { errors } } = useForm({ shouldUnregister: true })
   const phoneField = isRegister
     ? register('phone', {
@@ -72,13 +73,14 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
             email: values.email.trim(),
             phone: `+84${values.phone.trim().replace(/^0/, '')}`,
             password: values.password,
+            role,
           }
           : { identifier: values.identifier.trim(), password: values.password },
       )
       if (isRegister) reset()
       const user = result?.user
-      if (!isRegister && (!user || ['name', 'email', 'phone'].some((field) => typeof user[field] !== 'string'))) {
-        throw new Error('Máy chủ chưa trả về thông tin tài khoản. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
+        if (!isRegister && (!user || typeof result.token !== 'string' || ['name', 'email', 'phone', 'role'].some((field) => typeof user[field] !== 'string'))) {
+            throw new Error('Máy chủ chưa trả về thông tin tài khoản. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
       }
       onSuccess(isRegister ? 'register' : 'login', result)
     } catch (submitError) {
@@ -158,7 +160,12 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
 
           <form className="auth-form" onSubmit={handleSubmit(onSubmit)} noValidate>
             {isRegister ? (
-              <>
+                          <>
+                              <span className="form-label">Bạn đăng ký với vai trò</span>
+                              <div className="role-switch" role="radiogroup" aria-label="Chọn vai trò">
+                                  <button type="button" role="radio" aria-checked={role === 'student'} className={role === 'student' ? 'role-active' : ''} onClick={() => setRole('student')}>Sinh viên</button>
+                                  <button type="button" role="radio" aria-checked={role === 'employer'} className={role === 'employer' ? 'role-active' : ''} onClick={() => setRole('employer')}>Nhà tuyển dụng</button>
+                              </div>
                 <label className="form-label" htmlFor="name">Họ và tên</label>
                 <div className={`form-control${errors.name ? ' form-control-invalid' : ''}`}>
                   <UserRound size={18} />
