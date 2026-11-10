@@ -33,3 +33,24 @@ export async function postApiJson(path, body) {
 
   return readApiResponse(response)
 }
+
+export async function apiRequest(path, { method = 'GET', token, body } = {}) {
+    const headers = {}
+    if (body) headers['Content-Type'] = 'application/json'
+    if (token) headers.Authorization = `Bearer ${token}`
+
+    let response
+    try {
+        response = await fetch(`/api/${path}`, {
+            method,
+            headers,
+            body: body ? JSON.stringify(body) : undefined,
+        })
+    } catch (error) {
+        if (error instanceof TypeError) {
+            throw new Error('Không thể kết nối máy chủ. Vui lòng khởi động lại ứng dụng bằng lệnh npm run dev.')
+        }
+        throw error
+    }
+    return readApiResponse(response)
+}
