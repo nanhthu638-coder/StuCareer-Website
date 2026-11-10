@@ -22,6 +22,25 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `)
+const userColumns = database.prepare('PRAGMA table_info(users)').all()
+if (!userColumns.some((column) => column.name === 'role')) {
+    database.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+}
+
+database.exec(`
+  CREATE TABLE IF NOT EXISTS companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+    name TEXT NOT NULL,
+    industry TEXT NOT NULL DEFAULT '',
+    size TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`)
+
 
 const app = express()
 const otpByIdentifier = new Map()
@@ -32,6 +51,8 @@ const bcryptRounds = 12
 const otpLifetimeMs = 5 * 60 * 1000
 const resetTokenLifetimeMs = 10 * 60 * 1000
 const otpResendDelayMs = 60 * 1000
+const sessions = new Map()
+const sessionLifetimeMs = 8 * 60 * 60 * 1000
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '10kb' }))
@@ -68,7 +89,7 @@ function getUserByIdentifier(identifier) {
 }
 
 app.post('/api/auth/register', async (request, response) => {
-  const { name, email, phone, password } = request.body ?? {}
+  const { name, email, phone, password, role } = request.body ?? {}
   if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
     return response.status(400).json({ error: 'Họ tên cần có từ 2 đến 80 ký tự.' })
   }
@@ -90,9 +111,9 @@ app.post('/api/auth/register', async (request, response) => {
   }
 
   const passwordHash = await bcrypt.hash(password, bcryptRounds)
-  database.prepare('INSERT INTO users (name, email, phone, password_hash) VALUES (?, ?, ?, ?)')
-    .run(name.trim(), normalizedEmail, normalizedPhone, passwordHash)
-  return response.status(201).json({ message: 'Tạo tài khoản thành công.' })
+  database.prepare('INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)')
+        .run(name.trim(), normalizedEmail, normalizedPhone, passwordHash, role === 'employer' ? 'employer' : 'student')
+    return response.status(201).json({ message: 'Tạo tài khoản thành công.' })
 })
 
 app.post('/api/auth/login', async (request, response) => {
@@ -102,17 +123,20 @@ app.post('/api/auth/login', async (request, response) => {
   }
   const normalized = normalizeIdentifier(identifier)
   const user = normalized.includes('@')
-    ? database.prepare('SELECT id, name, email, phone, password_hash FROM users WHERE email = ?').get(normalized)
-    : database.prepare('SELECT id, name, email, phone, password_hash FROM users WHERE phone = ?').get(normalized)
+    ? database.prepare('SELECT id, name, email, phone, role, password_hash FROM users WHERE email = ?').get(normalized)
+    : database.prepare('SELECT id, name, email, phone, role, password_hash FROM users WHERE phone = ?').get(normalized)
   const passwordMatches = user ? await bcrypt.compare(password, user.password_hash) : false
   if (!passwordMatches) {
     return response.status(401).json({ error: 'Email/số điện thoại hoặc mật khẩu chưa chính xác.' })
   }
-  const { id, name, email, phone } = user
-  return response.json({
-    message: 'Đăng nhập thành công.',
-    user: { id, name, email, phone },
-  })
+    const { id, name, email, phone, role } = user
+    const token = randomBytes(32).toString('base64url')
+    sessions.set(token, { userId: id, expiresAt: Date.now() + sessionLifetimeMs })
+    return response.json({
+        message: 'Đăng nhập thành công.',
+        token,
+        user: { id, name, email, phone, role },
+    })
 })
 
 app.post('/api/auth/forgot-password', (request, response) => {
@@ -186,7 +210,69 @@ app.post('/api/auth/reset-password', async (request, response) => {
   resetTokens.delete(resetToken)
   return response.json({ message: 'Mật khẩu đã được cập nhật.' })
 })
+// Middleware: chỉ cho qua nếu có token hợp lệ VÀ tài khoản là nhà tuyển dụng
+function requireEmployer(request, response, next) {
+    const header = request.headers.authorization ?? ''
+    const token = header.startsWith('Bearer ') ? header.slice(7) : ''
+    const session = sessions.get(token)
+    if (!session || session.expiresAt <= Date.now()) {
+        sessions.delete(token)
+        return response.status(401).json({ error: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' })
+    }
+    const user = database.prepare('SELECT id, role FROM users WHERE id = ?').get(session.userId)
+    if (!user || user.role !== 'employer') {
+        return response.status(403).json({ error: 'Chỉ tài khoản nhà tuyển dụng mới dùng được chức năng này.' })
+    }
+    request.user = user
+    next()
+}
 
+const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
+
+app.get('/api/company', requireEmployer, (request, response) => {
+    const company = database
+        .prepare('SELECT name, industry, size, address, website, description FROM companies WHERE user_id = ?')
+        .get(request.user.id)
+    return response.json({ company: company ?? emptyCompany })
+})
+
+app.put('/api/company', requireEmployer, (request, response) => {
+    const body = request.body ?? {}
+    const readText = (value) => (typeof value === 'string' ? value.trim() : '')
+    const company = {
+        name: readText(body.name),
+        industry: readText(body.industry),
+        size: readText(body.size),
+        address: readText(body.address),
+        website: readText(body.website),
+        description: readText(body.description),
+    }
+    if (company.name.length < 2 || company.name.length > 100) {
+        return response.status(400).json({ error: 'Tên doanh nghiệp cần có từ 2 đến 100 ký tự.' })
+    }
+    if (company.industry.length > 80 || company.size.length > 40 || company.address.length > 200) {
+        return response.status(400).json({ error: 'Ngành nghề, quy mô hoặc địa chỉ quá dài.' })
+    }
+    if (company.website && !/^https?:\/\/\S+\.\S+$/i.test(company.website)) {
+        return response.status(400).json({ error: 'Website cần bắt đầu bằng http:// hoặc https://.' })
+    }
+    if (company.description.length > 1000) {
+        return response.status(400).json({ error: 'Giới thiệu không được vượt quá 1000 ký tự.' })
+    }
+    database.prepare(`
+    INSERT INTO companies (user_id, name, industry, size, address, website, description)
+    VALUES (@userId, @name, @industry, @size, @address, @website, @description)
+    ON CONFLICT(user_id) DO UPDATE SET
+      name = excluded.name,
+      industry = excluded.industry,
+      size = excluded.size,
+      address = excluded.address,
+      website = excluded.website,
+      description = excluded.description,
+      updated_at = CURRENT_TIMESTAMP
+  `).run({ userId: request.user.id, ...company })
+    return response.json({ message: 'Đã lưu thông tin doanh nghiệp.', company })
+})
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))
 
 app.use((error, _request, response, _next) => {
