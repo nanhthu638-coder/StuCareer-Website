@@ -3643,3 +3643,132 @@ select:focus-visible {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===== Chọn vai trò khi đăng ký ===== */
+.role-switch {
+    height: 44px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin: 6px 0 14px;
+    padding: 4px;
+    border: 1px solid #d7e2e5;
+    border-radius: 9px;
+    background: #f3f7f8;
+}
+
+    .role-switch button {
+        color: #334b56;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+        .role-switch button.role-active {
+            color: var(--color-slytherin);
+            background: #fff;
+            box-shadow: 0 2px 7px rgb(8 24 43 / 12%);
+            font-weight: 800;
+        }
+
+/* ===== Trang thông tin doanh nghiệp ===== */
+.company-page {
+    min-height: 60vh;
+    background: #f8fbf9;
+}
+
+.company-card {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 28px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.company-card-heading {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+    .company-card-heading h1 {
+        margin: 0 0 4px;
+        color: #0f172a;
+        font-size: 22px;
+    }
+
+    .company-card-heading p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+.company-card-icon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #49a3a6;
+    border-radius: 10px;
+    background: #e9f5f1;
+}
+
+.company-form {
+    display: grid;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.company-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.company-field {
+    display: grid;
+    gap: 6px;
+}
+
+    .company-field label {
+        color: #124e66;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .company-field input,
+    .company-field select,
+    .company-field textarea {
+        width: 100%;
+        padding: 10px 12px;
+        color: #0f172a;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #fff;
+        font: inherit;
+        font-size: 14px;
+    }
+
+        .company-field input:focus,
+        .company-field select:focus,
+        .company-field textarea:focus {
+            border-color: #49a3a6;
+            outline: 2px solid #49a3a6;
+            outline-offset: 0;
+        }
+
+    .company-field textarea {
+        min-height: 120px;
+        resize: vertical;
+    }
+
+@media (max-width: 640px) {
+    .company-row {
+        grid-template-columns: 1fr;
+    }
+}

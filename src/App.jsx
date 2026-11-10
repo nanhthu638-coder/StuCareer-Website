@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { ArrowUpRight, BriefcaseBusiness, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserRound, X } from 'lucide-react'
+import { ArrowUpRight, BriefcaseBusiness, Building2, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserRound, X } from 'lucide-react'
 import AuthPage from './AuthPage.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
 import './App.css'
 import JobDetail from './JobDetail.jsx'
+import CompanyProfile from './CompanyProfile.jsx'
 
 function getInitials(name) {
   return name
@@ -16,7 +17,7 @@ function getInitials(name) {
     .toLocaleUpperCase('vi')
 }
 
-function AccountControls({ user, onLogout, className }) {
+function AccountControls({ user, onLogout, onOpenCompany, className }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuId = useId()
   const triggerRef = useRef(null)
@@ -61,6 +62,18 @@ function AccountControls({ user, onLogout, className }) {
       {menuOpen && (
         <div className="account-dropdown" id={menuId} role="region" aria-label="Menu tài khoản">
           <AccountOverview user={user} />
+                  {user.role === 'employer' && (
+                      <button
+                          className="button button-outline account-logout"
+                          type="button"
+                          onClick={() => {
+                              setMenuOpen(false)
+                              onOpenCompany()
+                          }}
+                      >
+                          <Building2 size={15} /> Thông tin doanh nghiệp
+                      </button>
+                  )}
           <button
             className="button button-outline account-logout"
             type="button"
@@ -152,6 +165,10 @@ function App() {
         navigateTo('job')
         setMenuOpen(false)
     }
+    const openCompany = () => {
+        navigateTo('company')
+        setMenuOpen(false)
+    }
 
   const openAuth = (mode = 'login') => {
     navigateTo(mode)
@@ -175,9 +192,9 @@ function App() {
             return
           }
 
-          setCurrentUser(result.user)
-          navigateTo('home')
-          showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
+            setCurrentUser({ ...result.user, token: result.token })
+            navigateTo(result.user.role === 'employer' ? 'company' : 'home')
+            showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
         }}
       />
     )
@@ -192,6 +209,14 @@ function App() {
       />
     )
   } else {
+      let mainContent
+      if (page === 'job') {
+          mainContent = <JobDetail jobId={selectedJobId} onBack={() => navigateTo('home')} />
+      } else if (page === 'company' && currentUser?.role === 'employer') {
+          mainContent = <CompanyProfile token={currentUser.token} onBack={() => navigateTo('home')} />
+      } else {
+          mainContent = <HomePage onViewJob={openJob} />
+      }
     pageContent = (
       <div className="min-h-screen bg-white text-ink">
         <header className="site-header">
@@ -231,6 +256,7 @@ function App() {
                 <AccountControls
                   className="mobile-nav-actions account-controls"
                   user={currentUser}
+                  onOpenCompany={openCompany}
                   onLogout={() => {
                     setCurrentUser(null)
                     setMenuOpen(false)
@@ -250,6 +276,7 @@ function App() {
                 <AccountControls
                   className="account-controls"
                   user={currentUser}
+                  onOpenCompany={openCompany}
                   onLogout={() => {
                     setCurrentUser(null)
                     showNotice('Bạn đã đăng xuất thành công.')
@@ -264,13 +291,7 @@ function App() {
             </div>
           </div>
         </header>
-
-            {page === 'job' ? (
-                <JobDetail jobId={selectedJobId} onBack={() => navigateTo('home')} />
-            ) : (
-                <HomePage onViewJob={openJob} />
-            )}
-
+            {mainContent}
         <footer className="site-footer" id="contact">
           <div className="page-shell footer-inner">
             <a className="brand footer-brand" href="#home">
