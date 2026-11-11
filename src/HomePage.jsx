@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -30,10 +31,28 @@ const categories = [
   { name: 'Giáo dục', count: '194 việc làm', icon: GraduationCap, tone: 'lavender' },
 ]
 
+function normalizeSearchText(value) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi')
+}
+
 function HomePage({ onViewJob }) {
+  const [filters, setFilters] = useState({ keyword: '', category: '', location: '', minimumSalary: 0 })
+  const keyword = normalizeSearchText(filters.keyword.trim())
+  const filteredJobs = jobs.filter((job) => {
+    const searchableText = normalizeSearchText(`${job.title} ${job.company} ${job.category} ${job.type}`)
+    const keywordMatches = !keyword
+      || searchableText.includes(keyword)
+      || (keyword.includes('thuc tap') && job.type === 'Internship')
+    const categoryMatches = !filters.category || normalizeSearchText(job.category) === normalizeSearchText(filters.category)
+    const locationMatches = !filters.location || normalizeSearchText(job.location) === normalizeSearchText(filters.location)
+    const salaryMatches = !filters.minimumSalary || job.salaryMax >= filters.minimumSalary
+    return keywordMatches && categoryMatches && locationMatches && salaryMatches
+  })
+  const hasFilters = Boolean(keyword || filters.category || filters.location || filters.minimumSalary)
+
   return (
     <main id="home">
-      <JobHero />
+      <JobHero onSearch={setFilters} />
 
       <section className="section categories-section" id="categories">
         <div className="page-shell">
@@ -76,15 +95,12 @@ function HomePage({ onViewJob }) {
           <div className="section-heading jobs-heading">
             <div>
               <div className="section-kicker">CƠ HỘI MỚI MỖI NGÀY</div>
-              <h2>Việc làm mới nhất</h2>
-              <p>Cơ hội tốt đang chờ bạn — ứng tuyển ngay hôm nay.</p>
+              <h2>{hasFilters ? 'Kết quả tìm kiếm' : 'Việc làm mới nhất'}</h2>
+              <p>{hasFilters ? `${filteredJobs.length} việc làm phù hợp với tiêu chí của bạn.` : 'Cơ hội tốt đang chờ bạn — ứng tuyển ngay hôm nay.'}</p>
             </div>
-            <span className="text-link">
-              Xem tất cả việc làm <ArrowRight size={16} />
-            </span>
           </div>
           <div className="jobs-grid">
-            {jobs.slice(0,9).map((job) => (
+            {filteredJobs.map((job) => (
                 <article className="job-card" key={job.id}>
                     <div className="job-card-top">
                         <div className={`company-logo logo-${job.tone}`}>{job.logo}</div>
@@ -116,6 +132,12 @@ function HomePage({ onViewJob }) {
                 </article>
             ))}
           </div>
+          {filteredJobs.length === 0 && (
+            <div className="empty-jobs">
+              <strong>Không tìm thấy việc làm phù hợp</strong>
+              <p>Hãy thử thay đổi từ khóa hoặc tiêu chí tìm kiếm.</p>
+            </div>
+          )}
         </div>
       </section>
 

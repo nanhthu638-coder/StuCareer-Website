@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowUpRight, BriefcaseBusiness, ChevronDown, MapPin, Search, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowUpRight, BriefcaseBusiness, ChevronDown, CircleDollarSign, MapPin, Search, ShieldCheck, Sparkles } from 'lucide-react'
 
 const popularSearches = ['Thực tập sinh', 'Marketing', 'Thiết kế']
 
@@ -13,11 +13,12 @@ const revealItem = {
   }),
 }
 
-function JobHero() {
+function JobHero({ onSearch }) {
   const shouldReduceMotion = useReducedMotion()
   const [keyword, setKeyword] = useState('')
   const [category, setCategory] = useState('')
   const [location, setLocation] = useState('')
+  const [minimumSalary, setMinimumSalary] = useState('')
   const containerVariants = {
     hidden: {},
     visible: {
@@ -27,6 +28,7 @@ function JobHero() {
 
   const showJobs = (event) => {
     event.preventDefault()
+    onSearch({ keyword, category, location, minimumSalary: Number(minimumSalary) || 0 })
     document.getElementById('jobs')?.scrollIntoView({ behavior: shouldReduceMotion ? 'instant' : 'smooth' })
   }
 
@@ -76,7 +78,7 @@ function JobHero() {
               </span>
             </label>
 
-            <label className="search-field">
+            <label className="search-field search-category">
               <BriefcaseBusiness className="search-field-icon" size={19} aria-hidden="true" />
               <span className="search-field-content">
                 <span className="search-label">Ngành nghề</span>
@@ -91,7 +93,7 @@ function JobHero() {
               <ChevronDown className="select-arrow" size={16} aria-hidden="true" />
             </label>
 
-            <label className="search-field">
+            <label className="search-field search-location">
               <MapPin className="search-field-icon" size={19} aria-hidden="true" />
               <span className="search-field-content">
                 <span className="search-label">Địa điểm</span>
@@ -101,6 +103,21 @@ function JobHero() {
                   <option>Hà Nội</option>
                   <option>Đà Nẵng</option>
                   <option>Làm việc từ xa</option>
+                </select>
+              </span>
+              <ChevronDown className="select-arrow" size={16} aria-hidden="true" />
+            </label>
+
+            <label className="search-field search-salary">
+              <CircleDollarSign className="search-field-icon" size={19} aria-hidden="true" />
+              <span className="search-field-content">
+                <span className="search-label">Lương tối thiểu</span>
+                <select aria-label="Chọn mức lương tối thiểu" value={minimumSalary} onChange={(event) => setMinimumSalary(event.target.value)}>
+                  <option value="">Mọi mức lương</option>
+                  <option value="3">Từ 3 triệu</option>
+                  <option value="5">Từ 5 triệu</option>
+                  <option value="8">Từ 8 triệu</option>
+                  <option value="12">Từ 12 triệu</option>
                 </select>
               </span>
               <ChevronDown className="select-arrow" size={16} aria-hidden="true" />
