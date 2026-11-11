@@ -6,7 +6,6 @@ import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
 import JobDetail from './JobDetail.jsx'
 import { requestApiJson } from './api.js'
-import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
 import './App.css'
 
@@ -121,7 +120,7 @@ function AccountOverview({ user }) {
 
 function App() {
   const [page, setPage] = useState('home')
-  const [selectedJobId, setSelectedJobId] = useState(null)
+  const [selectedJob, setSelectedJob] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
   const [transitionState, setTransitionState] = useState('idle')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -152,12 +151,12 @@ function App() {
     setMenuOpen(false)
   }
 
-  const openJob = (jobId) => {
-    if (!getJobById(jobId)) {
+  const openJob = (job) => {
+    if (!job?.id) {
       showNotice('Không tìm thấy công việc này.')
       return
     }
-    setSelectedJobId(jobId)
+    setSelectedJob(job)
     navigateTo('job')
     setMenuOpen(false)
   }
@@ -294,7 +293,7 @@ function App() {
         </header>
 
         {page === 'job'
-          ? <JobDetail jobId={selectedJobId} onBack={() => navigateTo('home')} />
+          ? <JobDetail job={selectedJob} onBack={() => navigateTo('home')} />
           : <HomePage onViewJob={openJob} />}
 
         <footer className="site-footer" id="contact">

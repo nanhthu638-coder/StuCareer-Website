@@ -41,6 +41,21 @@ database.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `)
+database.exec(`
+  CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT NOT NULL,
+    salary_min INTEGER,
+    salary_max INTEGER,
+    type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    tone TEXT NOT NULL DEFAULT 'momo',
+    logo TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`)
 
 const app = express()
 const otpByIdentifier = new Map()
@@ -107,6 +122,15 @@ function getUserByIdentifier(identifier) {
     ? database.prepare('SELECT id, email, phone FROM users WHERE email = ?').get(normalized)
     : database.prepare('SELECT id, email, phone FROM users WHERE phone = ?').get(normalized)
 }
+
+app.get('/api/jobs', (_request, response) => {
+  const jobs = database.prepare(`
+    SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo, created_at
+    FROM jobs
+    ORDER BY id
+  `).all()
+  return response.json({ jobs })
+})
 
 app.post('/api/auth/register', async (request, response) => {
   const { name, email, phone, password } = request.body ?? {}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -18,6 +18,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import JobHero from './JobHero.jsx'
+import { requestApiJson } from './api.js'
 import { jobs } from './jobsData.js'
 
 const categories = [
@@ -32,13 +33,66 @@ const categories = [
 ]
 
 function normalizeSearchText(value) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi')
+  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi')
+}
+
+function getJobIdentity(job) {
+  return [job.title, job.company, job.location].map(normalizeSearchText).join('|')
+}
+
+function toListingJob(job) {
+  const salaryMin = job.salary_min === null ? null : Number(job.salary_min)
+  const salaryMax = job.salary_max === null ? null : Number(job.salary_max)
+
+  return {
+    id: `db-${job.id}`,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    salaryMin: salaryMin ?? 0,
+    salaryMax: salaryMax ?? 0,
+    salary: salaryMin === null || salaryMax === null
+      ? 'Thỏa thuận'
+      : `${salaryMin} – ${salaryMax} triệu / tháng`,
+    type: job.type,
+    category: job.category,
+    tone: job.tone,
+    logo: job.logo,
+    posted: job.created_at ? `Đăng ngày ${new Date(`${job.created_at.replace(' ', 'T')}Z`).toLocaleDateString('vi-VN')}` : 'Mới đăng',
+    slots: null,
+    deadline: null,
+    description: '',
+    requirements: [],
+    benefits: [],
+  }
 }
 
 function HomePage({ onViewJob }) {
   const [filters, setFilters] = useState({ keyword: '', category: '', location: '', minimumSalary: 0 })
+  const [databaseJobs, setDatabaseJobs] = useState([])
+  const [jobsLoadError, setJobsLoadError] = useState('')
+
+  useEffect(() => {
+    let ignore = false
+    requestApiJson('/api/jobs')
+      .then((result) => {
+        if (!Array.isArray(result.jobs)) throw new Error('Dữ liệu việc làm từ máy chủ không hợp lệ.')
+        if (!ignore) setDatabaseJobs(result.jobs.map(toListingJob))
+      })
+      .catch((error) => {
+        if (!ignore) setJobsLoadError(error.message || 'Không thể tải thêm việc làm từ máy chủ.')
+      })
+
+    return () => { ignore = true }
+  }, [])
+
+  const catalogIdentities = new Set(jobs.map(getJobIdentity))
+  const availableJobs = [
+    ...jobs,
+    ...databaseJobs.filter((job) => !catalogIdentities.has(getJobIdentity(job))),
+  ]
   const keyword = normalizeSearchText(filters.keyword.trim())
-  const filteredJobs = jobs.filter((job) => {
+  const filteredJobs = availableJobs.filter((job) => {
     const searchableText = normalizeSearchText(`${job.title} ${job.company} ${job.category} ${job.type}`)
     const keywordMatches = !keyword
       || searchableText.includes(keyword)
@@ -114,7 +168,7 @@ function HomePage({ onViewJob }) {
                         </button>
                     </div>
                     <h3>
-                        <button type="button" className="job-title-link" onClick={() => onViewJob(job.id)}>
+                        <button type="button" className="job-title-link" onClick={() => onViewJob(job)}>
                             {job.title}
                         </button>
                     </h3>
@@ -125,13 +179,14 @@ function HomePage({ onViewJob }) {
                     </div>
                     <div className="job-card-bottom">
                         <div className="job-salary"><strong>{job.salary}</strong><span><Clock3 size={12} />{job.posted}</span></div>
-                        <button className="apply-button" type="button" onClick={() => onViewJob(job.id)}>
+                        <button className="apply-button" type="button" onClick={() => onViewJob(job)}>
                             Xem chi tiết <ArrowRight size={14} />
                         </button>
                     </div>
                 </article>
             ))}
           </div>
+          {jobsLoadError && <p className="field-error" role="status">{jobsLoadError} Đang hiển thị danh sách việc làm có sẵn.</p>}
           {filteredJobs.length === 0 && (
             <div className="empty-jobs">
               <strong>Không tìm thấy việc làm phù hợp</strong>

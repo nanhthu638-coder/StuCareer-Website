@@ -86,8 +86,12 @@ function JobHero({ onSearch }) {
                   <option value="">Tất cả ngành nghề</option>
                   <option>Công nghệ thông tin</option>
                   <option>Marketing</option>
+                  <option>Tài chính — Kế toán</option>
                   <option>Thiết kế sáng tạo</option>
                   <option>Kinh doanh</option>
+                  <option>Nhân sự</option>
+                  <option>Chăm sóc khách hàng</option>
+                  <option>Giáo dục</option>
                 </select>
               </span>
               <ChevronDown className="select-arrow" size={16} aria-hidden="true" />

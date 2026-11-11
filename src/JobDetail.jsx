@@ -1,9 +1,6 @@
 ﻿import { ArrowLeft, BadgeCheck, BriefcaseBusiness, Building2, CalendarDays, CircleDollarSign, MapPin, UsersRound } from 'lucide-react'
-import { getJobById } from './jobsData.js'
 
-function JobDetail({ jobId, onBack }) {
-    const job = getJobById(jobId)
-
+function JobDetail({ job, onBack }) {
     // trg hợp ko tìm thấy công việc (id sai, tin xóa,...)
     if (!job) {
         return (
@@ -23,11 +20,11 @@ function JobDetail({ jobId, onBack }) {
 
     // các dòng thông tin ở khung bên phải (số lượng tuyển nằm ở đây)
     const facts = [
-        { icon: UsersRound, label: 'Số lượng tuyển', value: `${job.slots} người` },
+        { icon: UsersRound, label: 'Số lượng tuyển', value: job.slots ? `${job.slots} người` : 'Chưa cập nhật' },
         { icon: CircleDollarSign, label: 'Mức lương', value: job.salary },
         { icon: MapPin, label: 'Địa điểm', value: job.location },
         { icon: BriefcaseBusiness, label: 'Hình thức', value: job.type },
-        { icon: CalendarDays, label: 'Hạn nộp hồ sơ', value: job.deadline },
+        { icon: CalendarDays, label: 'Hạn nộp hồ sơ', value: job.deadline || 'Chưa cập nhật' },
     ]
 
     return (
@@ -53,26 +50,30 @@ function JobDetail({ jobId, onBack }) {
 
                         <section>
                             <h2>Mô tả công việc</h2>
-                            <p>{job.description}</p>
+                            <p>{job.description || 'Thông tin mô tả chưa được cập nhật.'}</p>
                         </section>
 
-                        <section>
-                            <h2>Yêu cầu ứng viên</h2>
-                            <ul>
-                                {job.requirements.map((item) => (
-                                    <li key={item}>{item}</li>
-                                ))}
-                            </ul>
-                        </section>
+                        {job.requirements?.length > 0 && (
+                            <section>
+                                <h2>Yêu cầu ứng viên</h2>
+                                <ul>
+                                    {job.requirements.map((item) => (
+                                        <li key={item}>{item}</li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
 
-                        <section>
-                            <h2>Quyền lợi</h2>
-                            <ul>
-                                {job.benefits.map((item) => (
-                                    <li key={item}>{item}</li>
-                                ))}
-                            </ul>
-                        </section>
+                        {job.benefits?.length > 0 && (
+                            <section>
+                                <h2>Quyền lợi</h2>
+                                <ul>
+                                    {job.benefits.map((item) => (
+                                        <li key={item}>{item}</li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
                     </article>
 
                     <aside className="job-detail-side">
