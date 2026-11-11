@@ -1,11 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { ArrowUpRight, BriefcaseBusiness, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserPen, UserRound, X } from 'lucide-react'
+import { ArrowUpRight, BriefcaseBusiness, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserRound, X } from 'lucide-react'
 import AuthPage from './AuthPage.jsx'
 import ContactForm from './ContactForm.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
 import JobDetail from './JobDetail.jsx'
-import ProfilePage from './ProfilePage.jsx'
 import { requestApiJson } from './api.js'
 import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
@@ -21,7 +20,7 @@ function getInitials(name) {
     .toLocaleUpperCase('vi')
 }
 
-function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, onViewJob, className }) {
+function AccountControls({ user, onLogout, className }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuId = useId()
   const triggerRef = useRef(null)
@@ -65,22 +64,7 @@ function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, o
       </button>
       {menuOpen && (
         <div className="account-dropdown" id={menuId} role="region" aria-label="Menu tài khoản">
-          <AccountOverview user={user} applicationsVersion={applicationsVersion} onViewJob={(jobId) => {
-            setMenuOpen(false)
-            onViewJob(jobId)
-          }} />
-          {user.role === 'seeker' && (
-            <button
-              className="button button-primary account-edit-profile"
-              type="button"
-              onClick={() => {
-                setMenuOpen(false)
-                onEditProfile()
-              }}
-            >
-              <UserPen size={15} /> Cập nhật hồ sơ &amp; tải CV
-            </button>
-          )}
+          <AccountOverview user={user} />
           <button
             className="button button-outline account-logout"
             type="button"
@@ -97,23 +81,7 @@ function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, o
   )
 }
 
-function formatApplicationDate(value) {
-  const date = new Date(`${value.replace(' ', 'T')}Z`)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('vi-VN')
-}
-
-function AccountOverview({ user, applicationsVersion, onViewJob }) {
-  const [applications, setApplications] = useState([])
-
-  useEffect(() => {
-    if (user.role !== 'seeker') return undefined
-    let cancelled = false
-    requestApiJson('/api/applications', { accessToken: user.accessToken })
-      .then((result) => { if (!cancelled) setApplications(result.applications) })
-      .catch(() => { if (!cancelled) setApplications([]) })
-    return () => { cancelled = true }
-  }, [user.role, user.accessToken, applicationsVersion])
-
+function AccountOverview({ user }) {
   return (
     <section className="account-overview" aria-label="Thông tin tài khoản">
       <div className="account-overview-heading">
@@ -141,23 +109,10 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
             <span className="account-card-icon"><ClipboardList size={19} /></span>
             <h2>Lịch sử ứng tuyển</h2>
           </div>
-          {applications.length === 0 ? (
-            <div className="application-history-empty">
-              <BriefcaseBusiness size={24} />
-              <p>Bạn chưa có công việc nào được ứng tuyển.</p>
-            </div>
-          ) : (
-            <ul className="application-history-list">
-              {applications.map((application) => (
-                <li key={application.id}>
-                  <button type="button" className="job-title-link" onClick={() => onViewJob(application.jobId)}>
-                    {application.title}
-                  </button>
-                  <span>{application.company} · {formatApplicationDate(application.createdAt)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="application-history-empty">
+            <BriefcaseBusiness size={24} />
+            <p>Bạn chưa có công việc nào được ứng tuyển.</p>
+          </div>
         </article>
       </div>
     </section>
@@ -171,7 +126,6 @@ function App() {
   const [transitionState, setTransitionState] = useState('idle')
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState('')
-  const [applicationsVersion, setApplicationsVersion] = useState(0)
   const navigationTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(navigationTimer.current), [])
@@ -208,12 +162,6 @@ function App() {
     setMenuOpen(false)
   }
 
-  const openProfile = () => {
-    if (currentUser?.role !== 'seeker') return
-    navigateTo('profile')
-    setMenuOpen(false)
-  }
-
   const logoutCurrentUser = async () => {
     try {
       await requestApiJson('/api/auth/session', {
@@ -226,7 +174,7 @@ function App() {
     } finally {
       setCurrentUser(null)
       setMenuOpen(false)
-      if (page === 'support' || page === 'profile') navigateTo('home')
+      if (page === 'support') navigateTo('home')
     }
   }
 
@@ -309,10 +257,7 @@ function App() {
                   <AccountControls
                     className="mobile-nav-actions account-controls"
                     user={currentUser}
-                    applicationsVersion={applicationsVersion}
                     onLogout={logoutCurrentUser}
-                    onEditProfile={openProfile}
-                    onViewJob={openJob}
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
@@ -332,10 +277,7 @@ function App() {
                   <AccountControls
                     className="account-controls"
                     user={currentUser}
-                    applicationsVersion={applicationsVersion}
                     onLogout={logoutCurrentUser}
-                    onEditProfile={openProfile}
-                    onViewJob={openJob}
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
@@ -351,27 +293,9 @@ function App() {
           </div>
         </header>
 
-        {page === 'job' && (
-          <JobDetail
-            key={`${selectedJobId}-${currentUser?.id ?? 'guest'}`}
-            jobId={selectedJobId}
-            currentUser={currentUser}
-            onBack={() => navigateTo('home')}
-            onLogin={() => openAuth('login')}
-            onEditProfile={openProfile}
-            onNotice={showNotice}
-            onApplicationsChanged={() => setApplicationsVersion((version) => version + 1)}
-          />
-        )}
-        {page === 'profile' && currentUser?.role === 'seeker' && (
-          <ProfilePage
-            accessToken={currentUser.accessToken}
-            onBack={() => navigateTo('home')}
-            onProfileSaved={(profile) => setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))}
-            onNotice={showNotice}
-          />
-        )}
-        {page !== 'job' && !(page === 'profile' && currentUser?.role === 'seeker') && <HomePage onViewJob={openJob} />}
+        {page === 'job'
+          ? <JobDetail jobId={selectedJobId} onBack={() => navigateTo('home')} />
+          : <HomePage onViewJob={openJob} />}
 
         <footer className="site-footer" id="contact">
           <div className="page-shell contact-section">
