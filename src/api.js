@@ -77,3 +77,7 @@ export async function downloadApiFile(path, accessToken, fallbackName) {
   link.remove()
   URL.revokeObjectURL(url)
 }
+
+export async function apiRequest(path, { method = 'GET', token, body } = {}) {
+  return requestApiJson(`/api/${path}`, { method, body, accessToken: token })
+}

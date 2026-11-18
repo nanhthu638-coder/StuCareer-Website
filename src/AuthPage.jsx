@@ -52,6 +52,7 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
   const [confirmationRevealed, setConfirmationRevealed] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [role, setRole] = useState('seeker')
   const { register, handleSubmit, getValues, reset, formState: { errors } } = useForm({ shouldUnregister: true })
   const phoneField = isRegister
     ? register('phone', {
@@ -72,6 +73,7 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
             email: values.email.trim(),
             phone: `+84${values.phone.trim().replace(/^0/, '')}`,
             password: values.password,
+            role,
           }
           : { identifier: values.identifier.trim(), password: values.password },
       )
@@ -80,7 +82,7 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
       if (!isRegister && (
         !user
         || ['name', 'email', 'phone', 'role'].some((field) => typeof user[field] !== 'string')
-        || !['seeker', 'support'].includes(user.role)
+        || !['seeker', 'support', 'employer'].includes(user.role)
         || typeof result.accessToken !== 'string'
         || !result.accessToken
       )) {
@@ -164,7 +166,12 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
 
           <form className="auth-form" onSubmit={handleSubmit(onSubmit)} noValidate>
             {isRegister ? (
-              <>
+                          <>
+                              <span className="form-label">Bạn đăng ký với vai trò</span>
+                              <div className="role-switch" role="radiogroup" aria-label="Chọn vai trò">
+                                  <button type="button" role="radio" aria-checked={role === 'seeker'} className={role === 'seeker' ? 'role-active' : ''} onClick={() => setRole('seeker')}>Sinh viên</button>
+                                  <button type="button" role="radio" aria-checked={role === 'employer'} className={role === 'employer' ? 'role-active' : ''} onClick={() => setRole('employer')}>Nhà tuyển dụng</button>
+                              </div>
                 <label className="form-label" htmlFor="name">Họ và tên</label>
                 <div className={`form-control${errors.name ? ' form-control-invalid' : ''}`}>
                   <UserRound size={18} />

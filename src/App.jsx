@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { ArrowUpRight, BriefcaseBusiness, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserPen, UserRound, X } from 'lucide-react'
+import { ArrowUpRight, BriefcaseBusiness, Building2, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserPen, UserRound, X } from 'lucide-react'
 import AuthPage from './AuthPage.jsx'
 import ContactForm from './ContactForm.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
@@ -10,6 +10,7 @@ import { requestApiJson } from './api.js'
 import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
 import './App.css'
+import CompanyProfile from './CompanyProfile.jsx'
 
 function getInitials(name) {
   return name
@@ -21,7 +22,7 @@ function getInitials(name) {
     .toLocaleUpperCase('vi')
 }
 
-function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, onViewJob, className }) {
+function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, onViewJob, onOpenCompany, className }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuId = useId()
   const triggerRef = useRef(null)
@@ -79,6 +80,18 @@ function AccountControls({ user, applicationsVersion, onLogout, onEditProfile, o
               }}
             >
               <UserPen size={15} /> Cập nhật hồ sơ &amp; tải CV
+            </button>
+          )}
+          {user.role === 'employer' && (
+            <button
+              className="button button-outline account-logout"
+              type="button"
+              onClick={() => {
+                setMenuOpen(false)
+                onOpenCompany()
+              }}
+            >
+              <Building2 size={15} /> Thông tin doanh nghiệp
             </button>
           )}
           <button
@@ -193,6 +206,10 @@ function App() {
     }, transitionDuration)
   }
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [page])
+
   const openAuth = (mode = 'login') => {
     navigateTo(mode)
     setMenuOpen(false)
@@ -217,6 +234,12 @@ function App() {
     setMenuOpen(false)
   }
 
+  const openCompany = () => {
+    if (currentUser?.role !== 'employer') return
+    navigateTo('company')
+    setMenuOpen(false)
+  }
+
   const logoutCurrentUser = async () => {
     try {
       await requestApiJson('/api/auth/session', {
@@ -229,7 +252,7 @@ function App() {
     } finally {
       setCurrentUser(null)
       setMenuOpen(false)
-      if (page === 'support' || page === 'profile') navigateTo('home')
+      if (page === 'support' || page === 'profile' || page === 'company') navigateTo('home')
     }
   }
 
@@ -251,7 +274,7 @@ function App() {
           }
 
           setCurrentUser({ ...result.user, accessToken: result.accessToken })
-          navigateTo(result.user.role === 'support' ? 'support' : 'home')
+          navigateTo(result.user.role === 'support' ? 'support' : result.user.role === 'employer' ? 'company' : 'home')
           showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
         }}
       />
@@ -275,6 +298,35 @@ function App() {
       />
     )
   } else {
+    let mainContent
+    if (page === 'job') {
+      mainContent = (
+        <JobDetail
+          key={`${selectedJob?.id}-${currentUser?.id ?? 'guest'}`}
+          job={selectedJob}
+          jobId={selectedJob?.id}
+          currentUser={currentUser}
+          onBack={() => navigateTo('home')}
+          onLogin={() => openAuth('login')}
+          onEditProfile={openProfile}
+          onNotice={showNotice}
+          onApplicationsChanged={() => setApplicationsVersion((version) => version + 1)}
+        />
+      )
+    } else if (page === 'profile' && currentUser?.role === 'seeker') {
+      mainContent = (
+        <ProfilePage
+          accessToken={currentUser.accessToken}
+          onBack={() => navigateTo('home')}
+          onProfileSaved={(profile) => setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))}
+          onNotice={showNotice}
+        />
+      )
+    } else if (page === 'company' && currentUser?.role === 'employer') {
+      mainContent = <CompanyProfile token={currentUser.accessToken} onBack={() => navigateTo('home')} />
+    } else {
+      mainContent = <HomePage onViewJob={openJob} />
+    }
     pageContent = (
       <div className="min-h-screen bg-white text-ink">
         <header className="site-header">
@@ -303,7 +355,10 @@ function App() {
             </button>
 
             <nav className={`main-nav${menuOpen ? ' main-nav-open' : ''}`} aria-label="Điều hướng chính">
-              <a className="nav-active" href="#home" onClick={() => setMenuOpen(false)}>Trang chủ</a>
+              <a className="nav-active" href="#home" onClick={() => {
+                if (page !== 'home') navigateTo('home')
+                setMenuOpen(false)
+              }}>Trang chủ</a>
               <span className="nav-inactive" aria-disabled="true">Việc làm</span>
               <span className="nav-inactive" aria-disabled="true">Công ty</span>
               <a href="#contact" onClick={() => setMenuOpen(false)}>Liên hệ</a>
@@ -316,6 +371,7 @@ function App() {
                     onLogout={logoutCurrentUser}
                     onEditProfile={openProfile}
                     onViewJob={openJob}
+                    onOpenCompany={openCompany}
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
@@ -339,6 +395,7 @@ function App() {
                     onLogout={logoutCurrentUser}
                     onEditProfile={openProfile}
                     onViewJob={openJob}
+                    onOpenCompany={openCompany}
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
@@ -353,30 +410,7 @@ function App() {
             </div>
           </div>
         </header>
-
-        {page === 'job' && (
-          <JobDetail
-            key={`${selectedJob?.id}-${currentUser?.id ?? 'guest'}`}
-            job={selectedJob}
-            jobId={selectedJob?.id}
-            currentUser={currentUser}
-            onBack={() => navigateTo('home')}
-            onLogin={() => openAuth('login')}
-            onEditProfile={openProfile}
-            onNotice={showNotice}
-            onApplicationsChanged={() => setApplicationsVersion((version) => version + 1)}
-          />
-        )}
-        {page === 'profile' && currentUser?.role === 'seeker' && (
-          <ProfilePage
-            accessToken={currentUser.accessToken}
-            onBack={() => navigateTo('home')}
-            onProfileSaved={(profile) => setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))}
-            onNotice={showNotice}
-          />
-        )}
-        {page !== 'job' && !(page === 'profile' && currentUser?.role === 'seeker') && <HomePage onViewJob={openJob} />}
-
+        {mainContent}
         <footer className="site-footer" id="contact">
           <div className="page-shell contact-section">
             <div className="contact-intro">

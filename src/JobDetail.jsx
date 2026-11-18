@@ -64,7 +64,6 @@ function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEd
             setBusy(false)
         }
     }
-
     // trg hợp ko tìm thấy công việc (id sai, tin xóa,...)
     if (!job) {
         return (
@@ -152,7 +151,6 @@ function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEd
                                 </li>
                             ))}
                         </ul>
-
                         <div className="apply-box">
                             {!currentUser && (
                                 <button className="button button-primary apply-main" type="button" onClick={onLogin}>
