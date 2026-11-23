@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowUpRight, BriefcaseBusiness, Building2, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserPen, UserRound, X } from 'lucide-react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import AuthPage from './AuthPage.jsx'
 import ContactForm from './ContactForm.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
@@ -11,6 +12,8 @@ import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
 import './App.css'
 import CompanyProfile from './CompanyProfile.jsx'
+import ChatbotWidget from './components/chatbot/ChatbotWidget.jsx'
+import NotificationBell from './components/notifications/NotificationBell.jsx'
 
 function getInitials(name) {
   return name
@@ -178,6 +181,8 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
 }
 
 function App() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [page, setPage] = useState('home')
   const [selectedJob, setSelectedJob] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
@@ -185,6 +190,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [applicationsVersion, setApplicationsVersion] = useState(0)
+  const [profileVersion, setProfileVersion] = useState(0)
   const navigationTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(navigationTimer.current), [])
@@ -223,6 +229,7 @@ function App() {
       showNotice('Không tìm thấy công việc này.')
       return
     }
+    if (location.pathname.startsWith('/company/')) navigate('/')
     setSelectedJob(job)
     navigateTo('job')
     setMenuOpen(false)
@@ -318,7 +325,10 @@ function App() {
         <ProfilePage
           accessToken={currentUser.accessToken}
           onBack={() => navigateTo('home')}
-          onProfileSaved={(profile) => setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))}
+          onProfileSaved={(profile) => {
+            setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))
+            setProfileVersion((version) => version + 1)
+          }}
           onNotice={showNotice}
         />
       )
@@ -385,6 +395,15 @@ function App() {
               )}
             </nav>
 
+            {currentUser?.role === 'seeker' && (
+              <NotificationBell
+                key={currentUser.id}
+                accessToken={currentUser.accessToken}
+                profileVersion={profileVersion}
+                onNavigateCompany={(companyId) => navigate(`/company/${companyId}`)}
+              />
+            )}
+
             <div className="header-actions">
               {currentUser ? (
                 <>
@@ -443,9 +462,17 @@ function App() {
   }
 
   return (
-    <div className={`page-transition page-transition-${transitionState}`} aria-busy={transitionState !== 'idle'}>
-      {pageContent}
-    </div>
+    <>
+      <div className={`page-transition page-transition-${transitionState}`} aria-busy={transitionState !== 'idle'}>
+        {location.pathname.startsWith('/company/')
+          ? <Outlet context={{ onViewJob: openJob }} />
+          : pageContent}
+      </div>
+      <ChatbotWidget
+        onViewCompany={(company) => navigate(`/company/${company.id}`)}
+        onApplyJob={(job) => openJob(job.id)}
+      />
+    </>
   )
 }
 

@@ -1,0 +1,273 @@
+.profile-edit-form .contact-form-fields {
+  align-items: start;
+}
+
+.profile-edit-form .profile-field {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-edit-form .profile-field > label,
+.profile-edit-form .profile-field > span {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-field b {
+  color: #e05b42;
+}
+
+.profile-edit-form .profile-field input:not([type="hidden"]),
+.profile-edit-form .profile-field select,
+.profile-edit-form .profile-field textarea,
+.profile-combobox-input-wrap,
+.profile-skill-tags {
+  width: 100%;
+  min-height: 41px;
+  padding: 9px 11px;
+  color: #263d4b;
+  border: 1px solid #dce5e9;
+  border-radius: 9px;
+  outline: 0;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.profile-edit-form .profile-field input:not([type="hidden"]):hover,
+.profile-edit-form .profile-field select:hover,
+.profile-edit-form .profile-field textarea:hover,
+.profile-combobox-input-wrap:hover,
+.profile-skill-tags:hover {
+  border-color: #9ac9ce;
+  box-shadow: 0 0 0 3px rgb(73 163 166 / 10%);
+}
+
+.profile-edit-form .profile-field input:not([type="hidden"]):focus,
+.profile-edit-form .profile-field select:focus,
+.profile-edit-form .profile-field textarea:focus,
+.profile-combobox-input-wrap:focus-within,
+.profile-skill-tags:focus-within {
+  border-color: #419ca5;
+  box-shadow: 0 0 0 3px rgb(73 163 166 / 16%), 0 0 14px rgb(73 163 166 / 13%);
+}
+
+.profile-edit-form .profile-field input[aria-invalid="true"],
+.profile-edit-form .profile-field select[aria-invalid="true"],
+.profile-edit-form-attempted .profile-field input:invalid,
+.profile-edit-form-attempted .profile-field select:invalid,
+.profile-edit-form .profile-field textarea[aria-invalid="true"],
+.profile-field-invalid .profile-skill-tags {
+  border-color: #e15b55;
+  box-shadow: 0 0 0 3px rgb(225 91 85 / 10%);
+}
+
+.profile-edit-form .profile-field input:disabled {
+  color: #7b8990;
+  background: #f3f6f7;
+  cursor: not-allowed;
+}
+
+.profile-edit-form .profile-field textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.profile-combobox,
+.profile-skill-combobox {
+  position: relative;
+  min-width: 0;
+}
+
+.profile-combobox-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px 2px 10px;
+}
+
+.profile-edit-form .profile-combobox-input-wrap input {
+  min-width: 0;
+  flex: 1;
+  padding: 7px 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.profile-edit-form .profile-combobox-input-wrap input:focus,
+.profile-edit-form .profile-combobox-input-wrap input:hover {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.profile-combobox-input-wrap > button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #6c828c;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.profile-combobox-input-wrap > button:hover {
+  color: #176f86;
+  background: #edf7f6;
+}
+
+.profile-combobox-options,
+.profile-skill-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #dce8eb;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgb(20 55 69 / 15%);
+}
+
+.profile-combobox-options button,
+.profile-skill-suggestions button {
+  width: 100%;
+  display: block;
+  padding: 9px 10px;
+  color: #395666;
+  border: 0;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 11px;
+  text-align: left;
+  transition: color 130ms ease, background 130ms ease;
+}
+
+.profile-combobox-options button:hover,
+.profile-combobox-options button[aria-selected="true"],
+.profile-skill-suggestions button:hover {
+  color: #115c76;
+  background: #eaf5fa;
+}
+
+.profile-combobox-options .profile-combobox-other {
+  margin-top: 4px;
+  padding-top: 11px;
+  color: #176f86;
+  border-top: 1px solid #edf1f3;
+  font-weight: 750;
+}
+
+.profile-combobox-switch {
+  margin-top: 6px;
+  padding: 0;
+  color: #267c88;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.profile-skill-tags {
+  min-height: 43px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+}
+
+.profile-skill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 5px 7px 5px 9px;
+  color: #176578;
+  border: 1px solid #d3e9e9;
+  border-radius: 999px;
+  background: #eff9f7;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.profile-skill-tag button {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #65828b;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.profile-skill-tag button:hover {
+  color: #a42e2e;
+  background: #ffe8e5;
+}
+
+.profile-edit-form .profile-skill-tags input {
+  width: min(100%, 150px);
+  min-width: 90px;
+  min-height: 27px;
+  flex: 1;
+  padding: 3px 4px;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.profile-edit-form .profile-skill-tags input:focus,
+.profile-edit-form .profile-skill-tags input:hover {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.profile-field-hint,
+.profile-inline-error {
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.profile-field-hint {
+  color: #84939a;
+}
+
+.profile-inline-error {
+  color: #be3935;
+}
+
+.profile-edit-form .profile-field.contact-form-message {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 520px) {
+  .profile-edit-form .contact-form-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-edit-form .profile-field.contact-form-message,
+  .profile-edit-form .contact-form-subject {
+    grid-column: auto;
+  }
+}

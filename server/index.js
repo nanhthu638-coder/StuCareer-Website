@@ -4,102 +4,18 @@ import { unlink, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
-import Database from 'better-sqlite3'
 import express from 'express'
 import { jobs } from '../src/jobsData.js'
+import { all, get, initializeDatabase, run, withTransaction } from './database.js'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 const databasePath = process.env.DATABASE_PATH
   ? resolve(process.env.DATABASE_PATH)
   : resolve(directory, 'data', 'stuwork.sqlite')
 mkdirSync(dirname(databasePath), { recursive: true })
-
-const database = new Database(databasePath)
-database.pragma('journal_mode = WAL')
-database.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    phone TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'seeker',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )
-`)
-if (!database.pragma('table_info(users)').some((column) => column.name === 'role')) {
-  database.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'seeker'")
-}
-database.exec("UPDATE users SET role = 'seeker' WHERE role = 'student'")
-database.exec(`
-  CREATE TABLE IF NOT EXISTS contact_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    message TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved')),
-    assigned_role TEXT NOT NULL DEFAULT 'support',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )
-`)
-database.exec(`
-  CREATE TABLE IF NOT EXISTS jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    location TEXT NOT NULL,
-    salary_min INTEGER,
-    salary_max INTEGER,
-    type TEXT NOT NULL,
-    category TEXT NOT NULL,
-    tone TEXT NOT NULL DEFAULT 'momo',
-    logo TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )
-`)
-
-for (const [column, definition] of [
-  ['university', 'TEXT'],
-  ['major', 'TEXT'],
-  ['graduation_year', 'INTEGER'],
-  ['bio', 'TEXT'],
-  ['skills', 'TEXT'],
-  ['cv_path', 'TEXT'],
-  ['cv_original_name', 'TEXT'],
-  ['cv_uploaded_at', 'TEXT'],
-]) {
-  if (!database.pragma('table_info(users)').some((item) => item.name === column)) {
-    database.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`)
-  }
-}
-database.exec(`
-  CREATE TABLE IF NOT EXISTS applications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    job_id INTEGER NOT NULL,
-    cover_letter TEXT,
-    cv_path TEXT NOT NULL,
-    cv_original_name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'withdrawn')),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (user_id, job_id)
-  )
-`)
-database.exec(`
-  CREATE TABLE IF NOT EXISTS companies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
-    name TEXT NOT NULL,
-    industry TEXT NOT NULL DEFAULT '',
-    size TEXT NOT NULL DEFAULT '',
-    address TEXT NOT NULL DEFAULT '',
-    website TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )
-`)
+const cvDirectory = resolve(dirname(databasePath), 'cvs')
+mkdirSync(cvDirectory, { recursive: true })
+await initializeDatabase()
 
 const app = express()
 const otpByIdentifier = new Map()
@@ -112,8 +28,6 @@ const otpLifetimeMs = 5 * 60 * 1000
 const resetTokenLifetimeMs = 10 * 60 * 1000
 const otpResendDelayMs = 60 * 1000
 const sessionLifetimeMs = 12 * 60 * 60 * 1000
-const cvDirectory = resolve(dirname(databasePath), 'cvs')
-mkdirSync(cvDirectory, { recursive: true })
 const maxCvBytes = 5 * 1024 * 1024
 const cvTypes = {
   '.pdf': { signature: [0x25, 0x50, 0x44, 0x46], mime: 'application/pdf' },
@@ -169,19 +83,19 @@ function requireSupportRole(request, response, next) {
   return next()
 }
 
-function getUserByIdentifier(identifier) {
+async function getUserByIdentifier(identifier) {
   const normalized = normalizeIdentifier(identifier)
   return normalized.includes('@')
-    ? database.prepare('SELECT id, email, phone FROM users WHERE email = ?').get(normalized)
-    : database.prepare('SELECT id, email, phone FROM users WHERE phone = ?').get(normalized)
+    ? get('SELECT id, email, phone FROM users WHERE email = ?', [normalized])
+    : get('SELECT id, email, phone FROM users WHERE phone = ?', [normalized])
 }
 
-app.get('/api/jobs', (_request, response) => {
-  const jobs = database.prepare(`
+app.get('/api/jobs', async (_request, response) => {
+  const jobs = await all(`
     SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo, created_at
     FROM jobs
     ORDER BY id
-  `).all()
+  `)
   return response.json({ jobs })
 })
 
@@ -202,14 +116,19 @@ app.post('/api/auth/register', async (request, response) => {
     return response.status(400).json({ error: 'Mật khẩu cần có ít nhất 8 ký tự và không vượt quá 72 byte.' })
   }
 
-  const existingUser = database.prepare('SELECT id FROM users WHERE email = ? OR phone = ?').get(normalizedEmail, normalizedPhone)
+  const existingUser = await get('SELECT id FROM users WHERE email = ? OR phone = ?', [normalizedEmail, normalizedPhone])
   if (existingUser) {
     return response.status(409).json({ error: 'Email hoặc số điện thoại này đã được đăng ký.' })
   }
 
   const passwordHash = await bcrypt.hash(password, bcryptRounds)
-  database.prepare('INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)')
-    .run(name.trim(), normalizedEmail, normalizedPhone, passwordHash, role === 'employer' ? 'employer' : 'seeker')
+  await run('INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)', [
+    name.trim(),
+    normalizedEmail,
+    normalizedPhone,
+    passwordHash,
+    role === 'employer' ? 'employer' : 'seeker',
+  ])
   return response.status(201).json({ message: 'Tạo tài khoản thành công.' })
 })
 
@@ -220,8 +139,8 @@ app.post('/api/auth/login', async (request, response) => {
   }
   const normalized = normalizeIdentifier(identifier)
   const user = normalized.includes('@')
-    ? database.prepare('SELECT id, name, email, phone, password_hash, role FROM users WHERE email = ?').get(normalized)
-    : database.prepare('SELECT id, name, email, phone, password_hash, role FROM users WHERE phone = ?').get(normalized)
+    ? await get('SELECT id, name, email, phone, password_hash, role FROM users WHERE email = ?', [normalized])
+    : await get('SELECT id, name, email, phone, password_hash, role FROM users WHERE phone = ?', [normalized])
   const passwordMatches = user ? await bcrypt.compare(password, user.password_hash) : false
   if (!passwordMatches) {
     return response.status(401).json({ error: 'Email/số điện thoại hoặc mật khẩu chưa chính xác.' })
@@ -244,7 +163,7 @@ app.delete('/api/auth/session', authenticateRequest, (request, response) => {
   return response.json({ message: 'Đăng xuất thành công.' })
 })
 
-app.post('/api/contact', (request, response) => {
+app.post('/api/contact', async (request, response) => {
   const { name, email, subject, message } = request.body ?? {}
   if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
     return response.status(400).json({ error: 'Họ tên cần có từ 2 đến 80 ký tự.' })
@@ -259,24 +178,24 @@ app.post('/api/contact', (request, response) => {
     return response.status(400).json({ error: 'Nội dung cần có từ 10 đến 5000 ký tự.' })
   }
 
-  database.prepare(`
+  await run(`
     INSERT INTO contact_requests (name, email, subject, message)
     VALUES (?, ?, ?, ?)
-  `).run(name.trim(), email.trim().toLowerCase(), subject.trim(), message.trim())
+  `, [name.trim(), email.trim().toLowerCase(), subject.trim(), message.trim()])
   return response.status(201).json({ message: 'Biểu mẫu của bạn đã được gửi.' })
 })
 
-app.get('/api/support/requests', authenticateRequest, requireSupportRole, (_request, response) => {
-  const requests = database.prepare(`
+app.get('/api/support/requests', authenticateRequest, requireSupportRole, async (_request, response) => {
+  const requests = await all(`
     SELECT id, name, email, subject, message, status, created_at, updated_at
     FROM contact_requests
     WHERE assigned_role = 'support'
     ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, created_at DESC
-  `).all()
+  `)
   return response.json({ requests })
 })
 
-app.patch('/api/support/requests/:id', authenticateRequest, requireSupportRole, (request, response) => {
+app.patch('/api/support/requests/:id', authenticateRequest, requireSupportRole, async (request, response) => {
   const id = Number(request.params.id)
   const { status } = request.body ?? {}
   if (!Number.isSafeInteger(id) || id < 1) {
@@ -285,17 +204,17 @@ app.patch('/api/support/requests/:id', authenticateRequest, requireSupportRole, 
   if (!['new', 'in_progress', 'resolved'].includes(status)) {
     return response.status(400).json({ error: 'Trạng thái yêu cầu không hợp lệ.' })
   }
-  const result = database.prepare(`
+  const result = await run(`
     UPDATE contact_requests SET status = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND assigned_role = 'support'
-  `).run(status, id)
+  `, [status, id])
   if (result.changes === 0) {
     return response.status(404).json({ error: 'Không tìm thấy yêu cầu hỗ trợ.' })
   }
   return response.json({ message: 'Đã cập nhật trạng thái yêu cầu.' })
 })
 
-app.post('/api/auth/forgot-password', (request, response) => {
+app.post('/api/auth/forgot-password', async (request, response) => {
   if (process.env.NODE_ENV === 'production') {
     return response.status(503).json({ error: 'Dịch vụ gửi OTP chưa được cấu hình. Vui lòng liên hệ hỗ trợ.' })
   }
@@ -307,7 +226,7 @@ app.post('/api/auth/forgot-password', (request, response) => {
   if (normalized.includes('@') ? !isEmail(normalized) : !isPhoneInput(identifier)) {
     return response.status(400).json({ error: 'Email hoặc số điện thoại chưa đúng định dạng.' })
   }
-  const user = getUserByIdentifier(normalized)
+  const user = await getUserByIdentifier(normalized)
   if (!user) return response.status(404).json({ error: 'Không tìm thấy tài khoản với thông tin này.' })
 
   const now = Date.now()
@@ -322,7 +241,7 @@ app.post('/api/auth/forgot-password', (request, response) => {
   return response.json({ message: 'Mã xác nhận đã được tạo.', developmentCode: code })
 })
 
-app.post('/api/auth/verify-otp', (request, response) => {
+app.post('/api/auth/verify-otp', async (request, response) => {
   const { identifier, code } = request.body ?? {}
   if (typeof identifier !== 'string' || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
     return response.status(400).json({ error: 'Vui lòng nhập mã OTP gồm 6 chữ số.' })
@@ -343,7 +262,7 @@ app.post('/api/auth/verify-otp', (request, response) => {
   }
 
   otpByIdentifier.delete(normalized)
-  const user = getUserByIdentifier(normalized)
+  const user = await getUserByIdentifier(normalized)
   if (!user) return response.status(404).json({ error: 'Không tìm thấy tài khoản.' })
   const resetToken = randomBytes(32).toString('base64url')
   resetTokens.set(resetToken, { userId: user.id, expiresAt: Date.now() + resetTokenLifetimeMs })
@@ -362,7 +281,7 @@ app.post('/api/auth/reset-password', async (request, response) => {
   }
 
   const passwordHash = await bcrypt.hash(password, bcryptRounds)
-  database.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, tokenData.userId)
+  await run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, tokenData.userId])
   resetTokens.delete(resetToken)
   return response.json({ message: 'Mật khẩu đã được cập nhật.' })
 })
@@ -378,33 +297,35 @@ function parseDeadline(value) {
   return new Date(year, month - 1, day, 23, 59, 59)
 }
 
-function getJobAvailability(jobId, userId) {
+async function getJobAvailability(jobId, userId) {
   const job = jobs.find((item) => item.id === jobId)
   if (!job) return null
-  const { applied } = database.prepare(
+  const { applied } = await get(
     "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted'",
-  ).get(jobId)
+    [jobId],
+  )
   const expired = parseDeadline(job.deadline).getTime() < Date.now()
   const mine = userId
-    ? database.prepare('SELECT id, status, created_at FROM applications WHERE job_id = ? AND user_id = ?').get(jobId, userId)
+    ? await get('SELECT id, status, created_at FROM applications WHERE job_id = ? AND user_id = ?', [jobId, userId])
     : null
+  const user = userId ? await get('SELECT cv_path FROM users WHERE id = ?', [userId]) : null
   return {
     jobId,
     slots: job.slots,
     applied,
     remaining: Math.max(job.slots - applied, 0),
     expired,
-    hasCv: userId ? Boolean(database.prepare('SELECT cv_path FROM users WHERE id = ?').get(userId)?.cv_path) : false,
+    hasCv: Boolean(user?.cv_path),
     application: mine?.status === 'submitted' ? { id: mine.id, createdAt: mine.created_at } : null,
   }
 }
 
-function readProfile(userId) {
-  const row = database.prepare(`
+async function readProfile(userId) {
+  const row = await get(`
     SELECT id, name, email, phone, role, university, major, graduation_year, bio, skills,
            cv_original_name, cv_uploaded_at
     FROM users WHERE id = ?
-  `).get(userId)
+  `, [userId])
   return {
     id: row.id,
     name: row.name,
@@ -433,11 +354,11 @@ function requireSeeker(request, response, next) {
   return next()
 }
 
-app.get('/api/profile', authenticateRequest, requireSeeker, (request, response) => {
-  return response.json({ profile: readProfile(request.auth.user.id) })
+app.get('/api/profile', authenticateRequest, requireSeeker, async (request, response) => {
+  return response.json({ profile: await readProfile(request.auth.user.id) })
 })
 
-app.put('/api/profile', authenticateRequest, requireSeeker, (request, response) => {
+app.put('/api/profile', authenticateRequest, requireSeeker, async (request, response) => {
   const { name, phone, university, major, graduationYear, bio, skills } = request.body ?? {}
   if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
     return response.status(400).json({ error: 'Họ tên cần có từ 2 đến 80 ký tự.' })
@@ -446,7 +367,7 @@ app.put('/api/profile', authenticateRequest, requireSeeker, (request, response) 
     return response.status(400).json({ error: 'Số điện thoại chưa đúng định dạng.' })
   }
   const normalizedPhone = normalizePhone(phone)
-  const duplicate = database.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(normalizedPhone, request.auth.user.id)
+  const duplicate = await get('SELECT id FROM users WHERE phone = ? AND id != ?', [normalizedPhone, request.auth.user.id])
   if (duplicate) return response.status(409).json({ error: 'Số điện thoại này đã được tài khoản khác sử dụng.' })
 
   const uni = optionalText(university, 120)
@@ -464,10 +385,10 @@ app.put('/api/profile', authenticateRequest, requireSeeker, (request, response) 
     }
   }
 
-  database.prepare(`
+  await run(`
     UPDATE users SET name = ?, phone = ?, university = ?, major = ?, graduation_year = ?, bio = ?, skills = ?
     WHERE id = ?
-  `).run(name.trim(), normalizedPhone, uni.value, maj.value, year, bioText.value, skillText.value, request.auth.user.id)
+  `, [name.trim(), normalizedPhone, uni.value, maj.value, year, bioText.value, skillText.value, request.auth.user.id])
 
   for (const session of sessions.values()) {
     if (session.user.id === request.auth.user.id) {
@@ -475,7 +396,7 @@ app.put('/api/profile', authenticateRequest, requireSeeker, (request, response) 
       session.user.phone = normalizedPhone
     }
   }
-  return response.json({ message: 'Đã cập nhật hồ sơ.', profile: readProfile(request.auth.user.id) })
+  return response.json({ message: 'Đã cập nhật hồ sơ.', profile: await readProfile(request.auth.user.id) })
 })
 
 app.post('/api/profile/cv', authenticateRequest, requireSeeker, cvUpload, async (request, response) => {
@@ -503,19 +424,19 @@ app.post('/api/profile/cv', authenticateRequest, requireSeeker, cvUpload, async 
 
   const fileName = `${request.auth.user.id}-${randomBytes(12).toString('hex')}${extension}`
   await writeFile(resolve(cvDirectory, fileName), body)
-  const previous = database.prepare('SELECT cv_path FROM users WHERE id = ?').get(request.auth.user.id)
-  database.prepare(`
+  const previous = await get('SELECT cv_path FROM users WHERE id = ?', [request.auth.user.id])
+  await run(`
     UPDATE users SET cv_path = ?, cv_original_name = ?, cv_uploaded_at = CURRENT_TIMESTAMP WHERE id = ?
-  `).run(fileName, originalName, request.auth.user.id)
+  `, [fileName, originalName, request.auth.user.id])
   // Xóa CV cũ nếu không còn đơn ứng tuyển nào đang dùng file đó.
-  if (previous?.cv_path && !database.prepare('SELECT 1 FROM applications WHERE cv_path = ?').get(previous.cv_path)) {
+  if (previous?.cv_path && !(await get('SELECT 1 FROM applications WHERE cv_path = ?', [previous.cv_path]))) {
     await unlink(resolve(cvDirectory, previous.cv_path)).catch(() => {})
   }
-  return response.status(201).json({ message: 'Đã tải CV lên.', profile: readProfile(request.auth.user.id) })
+  return response.status(201).json({ message: 'Đã tải CV lên.', profile: await readProfile(request.auth.user.id) })
 })
 
-app.get('/api/profile/cv', authenticateRequest, requireSeeker, (request, response) => {
-  const row = database.prepare('SELECT cv_path, cv_original_name FROM users WHERE id = ?').get(request.auth.user.id)
+app.get('/api/profile/cv', authenticateRequest, requireSeeker, async (request, response) => {
+  const row = await get('SELECT cv_path, cv_original_name FROM users WHERE id = ?', [request.auth.user.id])
   if (!row?.cv_path || !existsSync(resolve(cvDirectory, row.cv_path))) {
     return response.status(404).json({ error: 'Bạn chưa tải CV lên.' })
   }
@@ -525,14 +446,13 @@ app.get('/api/profile/cv', authenticateRequest, requireSeeker, (request, respons
 })
 
 app.delete('/api/profile/cv', authenticateRequest, requireSeeker, async (request, response) => {
-  const row = database.prepare('SELECT cv_path FROM users WHERE id = ?').get(request.auth.user.id)
+  const row = await get('SELECT cv_path FROM users WHERE id = ?', [request.auth.user.id])
   if (!row?.cv_path) return response.status(404).json({ error: 'Bạn chưa tải CV lên.' })
-  database.prepare('UPDATE users SET cv_path = NULL, cv_original_name = NULL, cv_uploaded_at = NULL WHERE id = ?')
-    .run(request.auth.user.id)
-  if (!database.prepare('SELECT 1 FROM applications WHERE cv_path = ?').get(row.cv_path)) {
+  await run('UPDATE users SET cv_path = NULL, cv_original_name = NULL, cv_uploaded_at = NULL WHERE id = ?', [request.auth.user.id])
+  if (!(await get('SELECT 1 FROM applications WHERE cv_path = ?', [row.cv_path]))) {
     await unlink(resolve(cvDirectory, row.cv_path)).catch(() => {})
   }
-  return response.json({ message: 'Đã xóa CV.', profile: readProfile(request.auth.user.id) })
+  return response.json({ message: 'Đã xóa CV.', profile: await readProfile(request.auth.user.id) })
 })
 
 function optionalAuthentication(request, _response, next) {
@@ -542,18 +462,18 @@ function optionalAuthentication(request, _response, next) {
   return next()
 }
 
-app.get('/api/jobs/availability', optionalAuthentication, (request, response) => {
-  const items = jobs.map((job) => getJobAvailability(job.id, request.auth?.user.id))
+app.get('/api/jobs/availability', optionalAuthentication, async (request, response) => {
+  const items = await Promise.all(jobs.map((job) => getJobAvailability(job.id, request.auth?.user.id)))
   return response.json({ jobs: items })
 })
 
-app.get('/api/jobs/:id/availability', optionalAuthentication, (request, response) => {
-  const availability = getJobAvailability(Number(request.params.id), request.auth?.user.id)
+app.get('/api/jobs/:id/availability', optionalAuthentication, async (request, response) => {
+  const availability = await getJobAvailability(Number(request.params.id), request.auth?.user.id)
   if (!availability) return response.status(404).json({ error: 'Không tìm thấy công việc này.' })
   return response.json(availability)
 })
 
-app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, (request, response) => {
+app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, async (request, response) => {
   const jobId = Number(request.params.id)
   const job = jobs.find((item) => item.id === jobId)
   if (!job) return response.status(404).json({ error: 'Không tìm thấy công việc này.' })
@@ -561,46 +481,46 @@ app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, (request, re
   if (coverLetter.error) return response.status(400).json({ error: 'Thư giới thiệu tối đa 2000 ký tự.' })
 
   // Kiểm tra slot và ghi đơn trong cùng một transaction để hai người không giành nhau slot cuối.
-  const apply = database.transaction(() => {
-    const user = database.prepare('SELECT cv_path, cv_original_name FROM users WHERE id = ?').get(request.auth.user.id)
+  const result = await withTransaction(async (transaction) => {
+    const user = await get('SELECT cv_path, cv_original_name FROM users WHERE id = ?', [request.auth.user.id], transaction)
     if (!user?.cv_path) return { status: 400, error: 'Bạn cần tải CV lên hồ sơ trước khi ứng tuyển.' }
     if (parseDeadline(job.deadline).getTime() < Date.now()) {
       return { status: 410, error: 'Tin tuyển dụng này đã hết hạn nộp hồ sơ.' }
     }
-    const existing = database.prepare('SELECT id, status FROM applications WHERE user_id = ? AND job_id = ?')
-      .get(request.auth.user.id, jobId)
+    const existing = await get('SELECT id, status FROM applications WHERE user_id = ? AND job_id = ?', [request.auth.user.id, jobId], transaction)
     if (existing?.status === 'submitted') return { status: 409, error: 'Bạn đã ứng tuyển công việc này rồi.' }
-    const { applied } = database.prepare(
+    const { applied } = await get(
       "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted'",
-    ).get(jobId)
+      [jobId],
+      transaction,
+    )
     if (applied >= job.slots) return { status: 409, error: 'Công việc này đã đủ số lượng tuyển (hết slot).' }
 
     if (existing) {
-      database.prepare(`
+      await run(`
         UPDATE applications SET status = 'submitted', cover_letter = ?, cv_path = ?, cv_original_name = ?, created_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(coverLetter.value, user.cv_path, user.cv_original_name, existing.id)
+      `, [coverLetter.value, user.cv_path, user.cv_original_name, existing.id], transaction)
     } else {
-      database.prepare(`
+      await run(`
         INSERT INTO applications (user_id, job_id, cover_letter, cv_path, cv_original_name)
         VALUES (?, ?, ?, ?, ?)
-      `).run(request.auth.user.id, jobId, coverLetter.value, user.cv_path, user.cv_original_name)
+      `, [request.auth.user.id, jobId, coverLetter.value, user.cv_path, user.cv_original_name], transaction)
     }
     return { status: 201 }
-  })
-  const result = apply.immediate()
+  }, { immediate: true })
   if (result.error) return response.status(result.status).json({ error: result.error })
   return response.status(201).json({
     message: 'Ứng tuyển thành công.',
-    availability: getJobAvailability(jobId, request.auth.user.id),
+    availability: await getJobAvailability(jobId, request.auth.user.id),
   })
 })
 
-app.get('/api/applications', authenticateRequest, requireSeeker, (request, response) => {
-  const rows = database.prepare(`
+app.get('/api/applications', authenticateRequest, requireSeeker, async (request, response) => {
+  const rows = await all(`
     SELECT id, job_id, status, created_at, cv_original_name
     FROM applications WHERE user_id = ? AND status = 'submitted' ORDER BY created_at DESC
-  `).all(request.auth.user.id)
+  `, [request.auth.user.id])
   const applications = rows.flatMap((row) => {
     const job = jobs.find((item) => item.id === row.job_id)
     return job
@@ -610,26 +530,27 @@ app.get('/api/applications', authenticateRequest, requireSeeker, (request, respo
   return response.json({ applications })
 })
 
-app.delete('/api/applications/:id', authenticateRequest, requireSeeker, (request, response) => {
+app.delete('/api/applications/:id', authenticateRequest, requireSeeker, async (request, response) => {
   const id = Number(request.params.id)
   if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã đơn ứng tuyển không hợp lệ.' })
-  const result = database.prepare(`
+  const result = await run(`
     UPDATE applications SET status = 'withdrawn' WHERE id = ? AND user_id = ? AND status = 'submitted'
-  `).run(id, request.auth.user.id)
+  `, [id, request.auth.user.id])
   if (result.changes === 0) return response.status(404).json({ error: 'Không tìm thấy đơn ứng tuyển.' })
   return response.json({ message: 'Đã rút đơn ứng tuyển. Slot đã được trả lại.' })
 })
 
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
 
-app.get('/api/company', authenticateRequest, requireEmployer, (request, response) => {
-  const company = database
-    .prepare('SELECT name, industry, size, address, website, description FROM companies WHERE user_id = ?')
-    .get(request.auth.user.id)
+app.get('/api/company', authenticateRequest, requireEmployer, async (request, response) => {
+  const company = await get(
+    'SELECT name, industry, size, address, website, description FROM companies WHERE user_id = ?',
+    [request.auth.user.id],
+  )
   return response.json({ company: company ?? emptyCompany })
 })
 
-app.put('/api/company', authenticateRequest, requireEmployer, (request, response) => {
+app.put('/api/company', authenticateRequest, requireEmployer, async (request, response) => {
   const body = request.body ?? {}
   const readText = (value) => (typeof value === 'string' ? value.trim() : '')
   const company = {
@@ -652,18 +573,22 @@ app.put('/api/company', authenticateRequest, requireEmployer, (request, response
   if (company.description.length > 1000) {
     return response.status(400).json({ error: 'Giới thiệu không được vượt quá 1000 ký tự.' })
   }
-  database.prepare(`
-    INSERT INTO companies (user_id, name, industry, size, address, website, description)
-    VALUES (@userId, @name, @industry, @size, @address, @website, @description)
-    ON CONFLICT(user_id) DO UPDATE SET
-      name = excluded.name,
-      industry = excluded.industry,
-      size = excluded.size,
-      address = excluded.address,
-      website = excluded.website,
-      description = excluded.description,
-      updated_at = CURRENT_TIMESTAMP
-  `).run({ userId: request.auth.user.id, ...company })
+  await withTransaction(async (transaction) => {
+    const existing = await get('SELECT user_id FROM companies WHERE user_id = ?', [request.auth.user.id], transaction)
+    const values = [company.name, company.industry, company.size, company.address, company.website, company.description]
+    if (existing) {
+      await run(`
+        UPDATE companies
+        SET name = ?, industry = ?, size = ?, address = ?, website = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `, [...values, request.auth.user.id], transaction)
+    } else {
+      await run(`
+        INSERT INTO companies (user_id, name, industry, size, address, website, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [request.auth.user.id, ...values], transaction)
+    }
+  }, { immediate: true })
   return response.json({ message: 'Đã lưu thông tin doanh nghiệp.', company })
 })
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))
@@ -695,7 +620,7 @@ async function initializeSupportAccount() {
   }
 
   const email = settings.email.trim().toLowerCase()
-  const existingUser = database.prepare('SELECT role FROM users WHERE email = ?').get(email)
+  const existingUser = await get('SELECT role FROM users WHERE email = ?', [email])
   if (existingUser) {
     if (existingUser.role !== 'support') {
       throw new Error('Email SUPPORT_EMAIL đã được dùng bởi tài khoản không có role support.')
@@ -704,14 +629,55 @@ async function initializeSupportAccount() {
   }
 
   const passwordHash = await bcrypt.hash(settings.password, bcryptRounds)
-  database.prepare(`
+  await run(`
     INSERT INTO users (name, email, phone, password_hash, role)
     VALUES (?, ?, ?, ?, 'support')
-  `).run(settings.name.trim(), email, normalizePhone(settings.phone), passwordHash)
+  `, [settings.name.trim(), email, normalizePhone(settings.phone), passwordHash])
   console.log(`Tài khoản hỗ trợ đã được tạo: ${email}`)
 }
 
+async function initializeEmployerAccount() {
+  const settings = {
+    name: process.env.EMPLOYER_NAME,
+    email: process.env.EMPLOYER_EMAIL,
+    phone: process.env.EMPLOYER_PHONE,
+    password: process.env.EMPLOYER_PASSWORD,
+  }
+  const configuredValues = Object.values(settings).filter(Boolean).length
+  if (configuredValues === 0) return
+  if (configuredValues !== Object.keys(settings).length) {
+    throw new Error('Cần cấu hình đầy đủ EMPLOYER_NAME, EMPLOYER_EMAIL, EMPLOYER_PHONE và EMPLOYER_PASSWORD để tạo tài khoản nhà tuyển dụng.')
+  }
+  if (settings.name.trim().length < 2 || settings.name.trim().length > 80
+    || !isEmail(settings.email.trim()) || !isPhoneInput(settings.phone)
+    || settings.password.length < 8 || Buffer.byteLength(settings.password, 'utf8') > 72) {
+    throw new Error('Thông tin EMPLOYER_* không hợp lệ; hãy kiểm tra tên, email, điện thoại và mật khẩu (8–72 byte).')
+  }
+
+  const email = settings.email.trim().toLowerCase()
+  const phone = normalizePhone(settings.phone)
+  const existingUsers = await all('SELECT id, email, phone, role FROM users WHERE email = ? OR phone = ?', [email, phone])
+  if (existingUsers.length > 0) {
+    const matchingEmployer = existingUsers.length === 1
+      && existingUsers[0].role === 'employer'
+      && existingUsers[0].email === email
+      && existingUsers[0].phone === phone
+    if (!matchingEmployer) {
+      throw new Error('EMPLOYER_EMAIL hoặc EMPLOYER_PHONE đã được dùng bởi tài khoản khác.')
+    }
+    return
+  }
+
+  const passwordHash = await bcrypt.hash(settings.password, bcryptRounds)
+  await run(`
+    INSERT INTO users (name, email, phone, password_hash, role)
+    VALUES (?, ?, ?, ?, 'employer')
+  `, [settings.name.trim(), email, phone, passwordHash])
+  console.log(`Tài khoản nhà tuyển dụng đã được tạo: ${email}`)
+}
+
 await initializeSupportAccount()
+await initializeEmployerAccount()
 
 app.listen(port, () => {
   console.log(`StuWork API listening on http://localhost:${port}`)
