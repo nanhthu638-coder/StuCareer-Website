@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowRight, BriefcaseBusiness, Code2, Sparkles } from 'lucide-react'
+import { ArrowUpRight, BriefcaseBusiness, ChevronDown, MapPin, Search, ShieldCheck, Sparkles } from 'lucide-react'
 
-const revealVariants = {
+const popularSearches = ['Thực tập sinh', 'Marketing', 'Thiết kế']
+
+const revealItem = {
   hidden: { opacity: 0, y: 18 },
   visible: (reduceMotion) => ({
     opacity: 1,
@@ -12,154 +15,176 @@ const revealVariants = {
 
 function JobHero() {
   const shouldReduceMotion = useReducedMotion()
-  const revealContainerVariants = {
+  const [keyword, setKeyword] = useState('')
+  const [category, setCategory] = useState('')
+  const [location, setLocation] = useState('')
+  const containerVariants = {
     hidden: {},
     visible: {
-      transition: { staggerChildren: shouldReduceMotion ? 0 : 0.14 },
+      transition: { staggerChildren: shouldReduceMotion ? 0 : 0.12 },
     },
   }
 
-  return (
-    <section className="relative isolate overflow-hidden bg-[#08182B] text-white">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{
-          backgroundImage:
-            'radial-gradient(ellipse at 78% 38%, rgba(18, 78, 102, 0.42), transparent 42%), linear-gradient(115deg, transparent 55%, rgba(73, 163, 166, 0.08))',
-        }}
-      />
-      <motion.div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-[12%] top-20 h-44 w-44 rounded-full bg-[#00F5FF]/20 blur-[90px]"
-        initial={{ opacity: 0.25, scale: 0.9 }}
-        animate={shouldReduceMotion ? undefined : {
-          opacity: [0.2, 0.55, 0.2],
-          scale: [0.9, 1.12, 0.9],
-        }}
-        transition={{ duration: 5, ease: 'easeInOut', repeat: Infinity }}
-      />
-      <motion.div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-12 left-[38%] h-32 w-32 rounded-full bg-[#39FF14]/10 blur-[75px]"
-        initial={{ opacity: 0.18 }}
-        animate={shouldReduceMotion ? undefined : { opacity: [0.15, 0.4, 0.15] }}
-        transition={{ duration: 6, ease: 'easeInOut', repeat: Infinity, delay: 1 }}
-      />
+  const showJobs = (event) => {
+    event.preventDefault()
+    document.getElementById('jobs')?.scrollIntoView({ behavior: shouldReduceMotion ? 'instant' : 'smooth' })
+  }
 
-      <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-6 pb-16 pt-20 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:px-12 lg:pb-20 lg:pt-24">
+  return (
+    <section className="hero-section" aria-labelledby="hero-heading">
+      <div className="hero-decoration" aria-hidden="true" />
+      <div className="page-shell hero-layout">
         <motion.div
-          className="max-w-2xl"
-          variants={revealContainerVariants}
+          className="hero-copy"
+          variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          <motion.div
-            variants={revealVariants}
-            custom={shouldReduceMotion}
-            className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#49A3A6]/50 bg-[#124E66]/40 px-4 py-2 text-sm font-semibold tracking-wide text-[#9ADBD6]"
-          >
-            <Sparkles size={15} className="text-[#00F5FF]" aria-hidden="true" />
-            Nền tảng tuyển dụng IT
+          <motion.div className="eyebrow" variants={revealItem} custom={shouldReduceMotion}>
+            <Sparkles size={15} aria-hidden="true" />
+            CƠ HỘI DÀNH RIÊNG CHO BẠN
           </motion.div>
 
-          <motion.h1
-            variants={revealVariants}
-            custom={shouldReduceMotion}
-            className="text-4xl font-extrabold leading-[1.12] tracking-tight sm:text-5xl lg:text-6xl"
-          >
-            Bứt phá sự nghiệp IT
-            <span className="mt-2 block bg-gradient-to-r from-[#9ADBD6] via-[#00F5FF] to-[#49A3A6] bg-clip-text text-transparent">
-              bắt đầu từ StuWork.
-            </span>
+          <motion.h1 id="hero-heading" variants={revealItem} custom={shouldReduceMotion}>
+            Khởi đầu sự nghiệp<br />của bạn <span>tại đây.</span>
           </motion.h1>
 
-          <motion.p
-            variants={revealVariants}
-            custom={shouldReduceMotion}
-            className="mt-6 max-w-xl text-base leading-8 text-slate-300 sm:text-lg"
-          >
-            Khám phá cơ hội công nghệ phù hợp, kết nối với nhà tuyển dụng và đưa
-            kỹ năng của bạn đến đúng nơi cần tìm.
+          <motion.p className="hero-subtitle" variants={revealItem} custom={shouldReduceMotion}>
+            Khám phá công việc phù hợp, kết nối cùng những doanh nghiệp hàng đầu và
+            biến điều bạn yêu thích thành sự nghiệp.
           </motion.p>
 
-          <motion.div
-            variants={revealVariants}
-            custom={shouldReduceMotion}
-            className="mt-9 flex flex-col gap-4 sm:flex-row"
-          >
-            <motion.a
-              href="#jobs"
-              whileHover={shouldReduceMotion ? undefined : {
-                y: -3,
-                boxShadow: '0 0 30px rgba(242, 101, 34, 0.48)',
-              }}
-              whileTap={shouldReduceMotion ? undefined : { scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#F26522] px-6 py-3 font-bold text-white shadow-[0_8px_24px_rgba(242,101,34,0.22)] outline-none transition-colors hover:bg-[#ff7836] focus-visible:ring-2 focus-visible:ring-[#00F5FF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08182B]"
-            >
-              Tìm Việc Ngay <ArrowRight size={18} aria-hidden="true" />
-            </motion.a>
-            <motion.button
-              type="button"
-              disabled
-              aria-disabled="true"
-              className="inline-flex min-h-12 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-[#49A3A6]/35 bg-[#124E66]/20 px-6 py-3 font-bold text-[#9ADBD6]/60 opacity-75"
-            >
-              <BriefcaseBusiness size={18} aria-hidden="true" />
-              Đăng Tin Tuyển Dụng
-            </motion.button>
+          <motion.div className="hero-proof" variants={revealItem} custom={shouldReduceMotion}>
+            <div className="avatar-stack" aria-hidden="true">
+              <span>H</span><span>M</span><span>A</span><span>+</span>
+            </div>
+            <span><strong>12.000+</strong> sinh viên đã tìm được công việc</span>
+          </motion.div>
+
+          <motion.form className="job-search" onSubmit={showJobs} variants={revealItem} custom={shouldReduceMotion}>
+            <label className="search-field search-keyword">
+              <Search className="search-field-icon" size={20} aria-hidden="true" />
+              <span className="search-field-content">
+                <span className="search-label">Từ khóa</span>
+                <input
+                  type="search"
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder="Vị trí, công ty..."
+                  aria-label="Tìm theo vị trí hoặc công ty"
+                />
+              </span>
+            </label>
+
+            <label className="search-field">
+              <BriefcaseBusiness className="search-field-icon" size={19} aria-hidden="true" />
+              <span className="search-field-content">
+                <span className="search-label">Ngành nghề</span>
+                <select aria-label="Chọn ngành nghề" value={category} onChange={(event) => setCategory(event.target.value)}>
+                  <option value="">Tất cả ngành nghề</option>
+                  <option>Công nghệ thông tin</option>
+                  <option>Marketing</option>
+                  <option>Thiết kế sáng tạo</option>
+                  <option>Kinh doanh</option>
+                </select>
+              </span>
+              <ChevronDown className="select-arrow" size={16} aria-hidden="true" />
+            </label>
+
+            <label className="search-field">
+              <MapPin className="search-field-icon" size={19} aria-hidden="true" />
+              <span className="search-field-content">
+                <span className="search-label">Địa điểm</span>
+                <select aria-label="Chọn địa điểm" value={location} onChange={(event) => setLocation(event.target.value)}>
+                  <option value="">Tất cả địa điểm</option>
+                  <option>TP. Hồ Chí Minh</option>
+                  <option>Hà Nội</option>
+                  <option>Đà Nẵng</option>
+                  <option>Làm việc từ xa</option>
+                </select>
+              </span>
+              <ChevronDown className="select-arrow" size={16} aria-hidden="true" />
+            </label>
+
+            <button className="search-button" type="submit">
+              <Search size={18} aria-hidden="true" />
+              <span>Tìm việc</span>
+            </button>
+          </motion.form>
+
+          <motion.div className="popular-searches" variants={revealItem} custom={shouldReduceMotion}>
+            <span>Phổ biến:</span>
+            {popularSearches.map((search) => (
+              <button key={search} type="button" onClick={() => setKeyword(search)}>{search}</button>
+            ))}
           </motion.div>
         </motion.div>
 
-        <div className="relative mx-auto flex min-h-[300px] w-full max-w-lg items-center justify-center sm:min-h-[360px]" aria-hidden="true">
-          <div className="absolute h-64 w-64 rounded-full border border-[#49A3A6]/20 sm:h-80 sm:w-80" />
-          <div className="absolute h-52 w-52 rounded-full border border-dashed border-[#00F5FF]/25 sm:h-64 sm:w-64" />
-          <div className="absolute h-40 w-40 rounded-full bg-[#124E66]/60 blur-2xl" />
-          <div className="relative w-full max-w-sm rotate-[-3deg] rounded-2xl border border-[#49A3A6]/35 bg-[#0D243A]/90 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.42)] backdrop-blur sm:p-6">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div className="flex items-center gap-3">
-                <span className="grid size-11 place-items-center rounded-xl bg-[#124E66] text-[#00F5FF]">
-                  <Code2 size={22} />
-                </span>
-                <span>
-                  <span className="block text-sm font-bold text-white">Cơ hội IT mới</span>
-                  <span className="mt-1 block text-xs text-slate-400">Dành cho bạn hôm nay</span>
-                </span>
-              </div>
-              <span className="rounded-full bg-[#39FF14]/10 px-2.5 py-1 text-xs font-semibold text-[#39FF14]">Mới</span>
-            </div>
-            <div className="space-y-3 py-5">
-              <div className="h-3 w-3/4 rounded-full bg-[#9ADBD6]/80" />
-              <div className="h-2.5 w-full rounded-full bg-white/10" />
-              <div className="h-2.5 w-5/6 rounded-full bg-white/10" />
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[#49A3A6]/20 bg-[#08182B]/70 px-4 py-3">
-              <span className="text-sm font-semibold text-slate-200">Frontend Developer</span>
-              <ArrowRight size={17} className="text-[#00F5FF]" />
-            </div>
-            <div className="mt-4 flex gap-2">
-              <span className="rounded-full bg-[#124E66]/70 px-3 py-1.5 text-xs text-[#9ADBD6]">React</span>
-              <span className="rounded-full bg-[#124E66]/70 px-3 py-1.5 text-xs text-[#9ADBD6]">Remote</span>
-              <span className="rounded-full bg-[#124E66]/70 px-3 py-1.5 text-xs text-[#9ADBD6]">Internship</span>
-            </div>
+        <motion.div
+          className="hero-art"
+          aria-label="Minh họa sinh viên đang tìm kiếm cơ hội việc làm"
+          initial={shouldReduceMotion ? false : { opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.7, delay: shouldReduceMotion ? 0 : 0.2 }}
+        >
+          <div className="art-sun" />
+          <div className="art-ring" />
+          <div className="art-ring art-ring-two" />
+          <div className="art-platform" />
+          <div className="art-person">
+            <div className="person-hair" />
+            <div className="person-head" />
+            <div className="person-neck" />
+            <div className="person-body" />
+            <div className="person-arm" />
+            <div className="person-arm person-arm-right" />
+            <div className="person-leg" />
+            <div className="person-leg person-leg-right" />
+            <div className="person-shoe" />
+            <div className="person-laptop"><span>✓</span></div>
           </div>
-          <span className="absolute right-[7%] top-[12%] size-2 rounded-full bg-[#00F5FF] shadow-[0_0_16px_#00F5FF]" />
-          <span className="absolute bottom-[13%] left-[8%] size-2 rounded-full bg-[#39FF14] shadow-[0_0_16px_#39FF14]" />
-        </div>
+          <div className="art-plant" aria-hidden="true"><span /><span /><span /><i /></div>
+          <span className="art-spark art-spark-one" aria-hidden="true">✦</span>
+          <span className="art-spark art-spark-two" aria-hidden="true">✳</span>
 
-        <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-7 sm:max-w-xl sm:gap-8 lg:col-span-2">
+          <motion.div
+            className="floating-card floating-card-top"
+            aria-label="Hồ sơ nổi bật, nhà tuyển dụng đã xem"
+            animate={shouldReduceMotion ? undefined : { y: [0, -8, 0] }}
+            transition={{ duration: 4.5, ease: 'easeInOut', repeat: Infinity }}
+          >
+            <span className="floating-icon"><ShieldCheck size={20} /></span>
+            <span><strong>Hồ sơ nổi bật</strong><small>Nhà tuyển dụng đã xem</small></span>
+          </motion.div>
+
+          <motion.div
+            className="floating-card floating-card-bottom"
+            aria-label="Frontend Intern tại Momo, Thành phố Hồ Chí Minh"
+            animate={shouldReduceMotion ? undefined : { y: [0, -8, 0] }}
+            transition={{ duration: 4.5, ease: 'easeInOut', repeat: Infinity, delay: 0.8 }}
+          >
+            <span className="floating-company">M</span>
+            <span><strong>Frontend Intern</strong><small>Momo · TP. Hồ Chí Minh</small></span>
+            <ArrowUpRight size={17} aria-hidden="true" />
+          </motion.div>
+        </motion.div>
+
+        <div className="hero-stats" aria-label="Thống kê StuWork">
           <div>
-            <strong className="block text-2xl font-extrabold text-white sm:text-3xl">2.500<span className="text-[#00F5FF]">+</span></strong>
-            <span className="mt-1 block text-xs text-slate-400 sm:text-sm">Doanh nghiệp uy tín</span>
+            <strong>2.500<span>+</span></strong>
+            <small>Doanh nghiệp uy tín</small>
           </div>
           <div>
-            <strong className="block text-2xl font-extrabold text-white sm:text-3xl">18.000<span className="text-[#00F5FF]">+</span></strong>
-            <span className="mt-1 block text-xs text-slate-400 sm:text-sm">Việc làm đang tuyển</span>
+            <strong>18.000<span>+</span></strong>
+            <small>Việc làm đang tuyển</small>
           </div>
           <div>
-            <strong className="block text-2xl font-extrabold text-white sm:text-3xl">95<span className="text-[#00F5FF]">%</span></strong>
-            <span className="mt-1 block text-xs text-slate-400 sm:text-sm">Ứng viên hài lòng</span>
+            <strong>95<span>%</span></strong>
+            <small>Ứng viên hài lòng</small>
+          </div>
+          <div className="trusted-by">
+            <ShieldCheck size={19} aria-hidden="true" />
+            <span>Đồng hành cùng sinh viên Việt</span>
           </div>
         </div>
       </div>
