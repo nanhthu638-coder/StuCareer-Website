@@ -6,7 +6,6 @@ import ForgotPassword from './ForgotPassword.jsx'
 import HomePage from './HomePage.jsx'
 import JobDetail from './JobDetail.jsx'
 import ProfilePage from './ProfilePage.jsx'
-import ReviewStatus from './ReviewStatus.jsx'
 import { requestApiJson } from './api.js'
 import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
@@ -155,7 +154,6 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
                     {application.title}
                   </button>
                   <span>{application.company} · {formatApplicationDate(application.createdAt)}</span>
-                  <ReviewStatus status={application.reviewStatus} />
                 </li>
               ))}
             </ul>

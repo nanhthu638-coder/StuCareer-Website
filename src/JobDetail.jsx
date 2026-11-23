@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, BadgeCheck, BriefcaseBusiness, Building2, CalendarDays, CircleDollarSign, MapPin, UsersRound } from 'lucide-react'
 import { requestApiJson } from './api.js'
 import { getJobById } from './jobsData.js'
-import ReviewStatus from './ReviewStatus.jsx'
 
 function JobDetail({ jobId, currentUser, onBack, onLogin, onEditProfile, onNotice, onApplicationsChanged }) {
     const job = getJobById(jobId)
@@ -162,7 +161,6 @@ function JobDetail({ jobId, currentUser, onBack, onLogin, onEditProfile, onNotic
                             {isSeeker && availability?.application && (
                                 <>
                                     <p className="apply-status apply-status-done">Bạn đã ứng tuyển công việc này.</p>
-                                    <ReviewStatus status={availability.application.reviewStatus} />
                                     <button className="button button-outline apply-main" type="button" disabled={busy} onClick={handleWithdraw}>
                                         Rút đơn ứng tuyển
                                     </button>
