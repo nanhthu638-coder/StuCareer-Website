@@ -72,6 +72,16 @@ database.exec(`
   )
 `)
 
+for (const [column, definition] of [
+  ['review_status', "TEXT NOT NULL DEFAULT 'pending'"],
+  ['reviewed_at', 'TEXT'],
+]) {
+  if (!database.pragma('table_info(applications)').some((item) => item.name === column)) {
+    database.exec(`ALTER TABLE applications ADD COLUMN ${column} ${definition}`)
+  }
+}
+const reviewStatuses = ['pending', 'accepted', 'rejected']
+
 const app = express()
 const otpByIdentifier = new Map()
 const resetTokens = new Map()
@@ -343,7 +353,7 @@ function getJobAvailability(jobId, userId) {
   ).get(jobId)
   const expired = parseDeadline(job.deadline).getTime() < Date.now()
   const mine = userId
-    ? database.prepare('SELECT id, status, created_at FROM applications WHERE job_id = ? AND user_id = ?').get(jobId, userId)
+    ? database.prepare('SELECT id, status, review_status, created_at FROM applications WHERE job_id = ? AND user_id = ?').get(jobId, userId)
     : null
   return {
     jobId,
@@ -352,7 +362,9 @@ function getJobAvailability(jobId, userId) {
     remaining: Math.max(job.slots - applied, 0),
     expired,
     hasCv: userId ? Boolean(database.prepare('SELECT cv_path FROM users WHERE id = ?').get(userId)?.cv_path) : false,
-    application: mine?.status === 'submitted' ? { id: mine.id, createdAt: mine.created_at } : null,
+    application: mine?.status === 'submitted'
+      ? { id: mine.id, createdAt: mine.created_at, reviewStatus: mine.review_status }
+      : null,
   }
 }
 
@@ -534,7 +546,8 @@ app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, (request, re
 
     if (existing) {
       database.prepare(`
-        UPDATE applications SET status = 'submitted', cover_letter = ?, cv_path = ?, cv_original_name = ?, created_at = CURRENT_TIMESTAMP
+        UPDATE applications SET status = 'submitted', review_status = 'pending', reviewed_at = NULL,
+          cover_letter = ?, cv_path = ?, cv_original_name = ?, created_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(coverLetter.value, user.cv_path, user.cv_original_name, existing.id)
     } else {
@@ -555,13 +568,13 @@ app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, (request, re
 
 app.get('/api/applications', authenticateRequest, requireSeeker, (request, response) => {
   const rows = database.prepare(`
-    SELECT id, job_id, status, created_at, cv_original_name
+    SELECT id, job_id, status, review_status, reviewed_at, created_at, cv_original_name
     FROM applications WHERE user_id = ? AND status = 'submitted' ORDER BY created_at DESC
   `).all(request.auth.user.id)
   const applications = rows.flatMap((row) => {
     const job = jobs.find((item) => item.id === row.job_id)
     return job
-      ? [{ id: row.id, jobId: job.id, title: job.title, company: job.company, cv: row.cv_original_name, createdAt: row.created_at }]
+      ? [{ id: row.id, jobId: job.id, title: job.title, company: job.company, cv: row.cv_original_name, createdAt: row.created_at, reviewStatus: row.review_status, reviewedAt: row.reviewed_at }]
       : []
   })
   return response.json({ applications })
@@ -575,6 +588,67 @@ app.delete('/api/applications/:id', authenticateRequest, requireSeeker, (request
   `).run(id, request.auth.user.id)
   if (result.changes === 0) return response.status(404).json({ error: 'Không tìm thấy đơn ứng tuyển.' })
   return response.json({ message: 'Đã rút đơn ứng tuyển. Slot đã được trả lại.' })
+})
+
+app.get('/api/support/applications', authenticateRequest, requireSupportRole, (_request, response) => {
+  const rows = database.prepare(`
+    SELECT a.id, a.job_id, a.cover_letter, a.cv_original_name, a.review_status, a.reviewed_at, a.created_at,
+           u.name AS candidate_name, u.email AS candidate_email, u.phone AS candidate_phone
+    FROM applications a JOIN users u ON u.id = a.user_id
+    WHERE a.status = 'submitted'
+    ORDER BY CASE a.review_status WHEN 'pending' THEN 0 ELSE 1 END, a.created_at DESC
+  `).all()
+  const applications = rows.flatMap((row) => {
+    const job = jobs.find((item) => item.id === row.job_id)
+    return job
+      ? [{
+        id: row.id,
+        jobId: job.id,
+        title: job.title,
+        company: job.company,
+        candidateName: row.candidate_name,
+        candidateEmail: row.candidate_email,
+        candidatePhone: row.candidate_phone,
+        coverLetter: row.cover_letter ?? '',
+        cv: row.cv_original_name,
+        reviewStatus: row.review_status,
+        reviewedAt: row.reviewed_at,
+        createdAt: row.created_at,
+      }]
+      : []
+  })
+  return response.json({ applications })
+})
+
+app.patch('/api/support/applications/:id', authenticateRequest, requireSupportRole, (request, response) => {
+  const id = Number(request.params.id)
+  const { reviewStatus } = request.body ?? {}
+  if (!Number.isSafeInteger(id) || id < 1) {
+    return response.status(400).json({ error: 'Mã đơn ứng tuyển không hợp lệ.' })
+  }
+  if (!reviewStatuses.includes(reviewStatus)) {
+    return response.status(400).json({ error: 'Trạng thái đơn ứng tuyển không hợp lệ.' })
+  }
+  const result = database.prepare(`
+    UPDATE applications
+    SET review_status = ?, reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+    WHERE id = ? AND status = 'submitted'
+  `).run(reviewStatus, reviewStatus, id)
+  if (result.changes === 0) return response.status(404).json({ error: 'Không tìm thấy đơn ứng tuyển.' })
+  return response.json({ message: 'Đã cập nhật trạng thái đơn ứng tuyển.' })
+})
+
+app.get('/api/support/applications/:id/cv', authenticateRequest, requireSupportRole, (request, response) => {
+  const id = Number(request.params.id)
+  const row = Number.isSafeInteger(id)
+    ? database.prepare("SELECT cv_path, cv_original_name FROM applications WHERE id = ? AND status = 'submitted'").get(id)
+    : null
+  if (!row || !existsSync(resolve(cvDirectory, row.cv_path))) {
+    return response.status(404).json({ error: 'Không tìm thấy CV của đơn này.' })
+  }
+  const extension = `.${row.cv_path.split('.').pop()}`
+  response.type(cvTypes[extension]?.mime ?? 'application/octet-stream')
+  return response.download(resolve(cvDirectory, row.cv_path), row.cv_original_name)
 })
 
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))

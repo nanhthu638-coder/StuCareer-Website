@@ -4182,3 +4182,92 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Theo dõi trạng thái đơn ứng tuyển: tích xanh / dấu X đỏ / đang chờ */
+.review-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.review-status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.review-status-accepted {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.review-status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.support-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.support-tabs button {
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.support-tabs button.active {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.support-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.support-review-actions .button,
+.review-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-button {
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+}
+
+.review-button-accept {
+  background: #16a34a;
+}
+
+.review-button-reject {
+  background: #dc2626;
+}
+
+.review-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.apply-box .review-status {
+  margin-bottom: 10px;
+}

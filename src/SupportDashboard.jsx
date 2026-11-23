@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, BriefcaseBusiness, RefreshCw } from 'lucide-react'
-import { requestApiJson } from './api.js'
+import { ArrowLeft, BriefcaseBusiness, CircleCheck, CircleX, Download, RefreshCw } from 'lucide-react'
+import { downloadApiFile, requestApiJson } from './api.js'
+import ReviewStatus from './ReviewStatus.jsx'
 
 const statusLabels = {
   new: 'Mới',
@@ -18,6 +19,9 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
+  const [tab, setTab] = useState('requests')
+  const [applications, setApplications] = useState([])
+  const [reviewingId, setReviewingId] = useState(null)
 
   const fetchRequests = useCallback(
     () => requestApiJson('/api/support/requests', { accessToken }),
@@ -28,7 +32,11 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
     setError('')
     setLoading(true)
     try {
-      const result = await fetchRequests()
+      const [result, applicationResult] = await Promise.all([
+        fetchRequests(),
+        requestApiJson('/api/support/applications', { accessToken }),
+      ])
+      setApplications(applicationResult.applications)
       setRequests(result.requests)
       setDraftStatuses(Object.fromEntries(result.requests.map((request) => [request.id, request.status])))
     } catch (loadError) {
@@ -40,9 +48,10 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
 
   useEffect(() => {
     let active = true
-    fetchRequests()
-      .then((result) => {
+    Promise.all([fetchRequests(), requestApiJson('/api/support/applications', { accessToken })])
+      .then(([result, applicationResult]) => {
         if (!active) return
+        setApplications(applicationResult.applications)
         setRequests(result.requests)
         setDraftStatuses(Object.fromEntries(result.requests.map((request) => [request.id, request.status])))
       })
@@ -53,7 +62,7 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [fetchRequests])
+  }, [fetchRequests, accessToken])
 
   const updateStatus = async (requestId) => {
     setError('')
@@ -72,6 +81,34 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
       setError(updateError.message || 'Không thể cập nhật yêu cầu.')
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  const reviewApplication = async (applicationId, reviewStatus) => {
+    setError('')
+    setReviewingId(applicationId)
+    try {
+      await requestApiJson(`/api/support/applications/${applicationId}`, {
+        method: 'PATCH',
+        body: { reviewStatus },
+        accessToken,
+      })
+      setApplications((current) => current.map((item) => (
+        item.id === applicationId ? { ...item, reviewStatus } : item
+      )))
+    } catch (reviewError) {
+      setError(reviewError.message || 'Không thể cập nhật trạng thái đơn ứng tuyển.')
+    } finally {
+      setReviewingId(null)
+    }
+  }
+
+  const downloadCv = async (application) => {
+    setError('')
+    try {
+      await downloadApiFile(`/api/support/applications/${application.id}/cv`, accessToken, application.cv)
+    } catch (downloadError) {
+      setError(downloadError.message || 'Không thể tải CV về.')
     }
   }
 
@@ -102,8 +139,77 @@ function SupportDashboard({ accessToken, onHome, onLogout }) {
           </button>
         </div>
 
+        <div className="support-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={tab === 'requests'} className={tab === 'requests' ? 'active' : ''} onClick={() => setTab('requests')}>
+            Thắc mắc ({requests.length})
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'applications'} className={tab === 'applications' ? 'active' : ''} onClick={() => setTab('applications')}>
+            Đơn ứng tuyển ({applications.length})
+          </button>
+        </div>
+
         {error && <div className="support-error" role="alert">{error}</div>}
-        {loading ? (
+        {tab === 'applications' ? (
+          loading ? (
+            <div className="support-empty">Đang tải đơn ứng tuyển...</div>
+          ) : applications.length === 0 ? (
+            <div className="support-empty">Chưa có đơn ứng tuyển nào.</div>
+          ) : (
+            <div className="support-request-list">
+              {applications.map((application) => (
+                <article className="support-request-card" key={application.id}>
+                  <div className="support-request-heading">
+                    <div>
+                      <ReviewStatus status={application.reviewStatus} />
+                      <h2>{application.title}</h2>
+                      <small>{application.company}</small>
+                    </div>
+                    <time dateTime={`${application.createdAt.replace(' ', 'T')}Z`}>{formatDate(application.createdAt)}</time>
+                  </div>
+                  {application.coverLetter && <p className="support-request-message">{application.coverLetter}</p>}
+                  <div className="support-request-footer">
+                    <div className="support-request-sender">
+                      <strong>{application.candidateName}</strong>
+                      <a href={`mailto:${application.candidateEmail}`}>{application.candidateEmail}</a>
+                      <span>{application.candidatePhone}</span>
+                    </div>
+                    <div className="support-review-actions">
+                      <button className="button button-outline" type="button" onClick={() => downloadCv(application)}>
+                        <Download size={14} /> CV
+                      </button>
+                      <button
+                        className="button review-button review-button-accept"
+                        type="button"
+                        disabled={application.reviewStatus === 'accepted' || reviewingId === application.id}
+                        onClick={() => reviewApplication(application.id, 'accepted')}
+                      >
+                        <CircleCheck size={14} /> Duyệt
+                      </button>
+                      <button
+                        className="button review-button review-button-reject"
+                        type="button"
+                        disabled={application.reviewStatus === 'rejected' || reviewingId === application.id}
+                        onClick={() => reviewApplication(application.id, 'rejected')}
+                      >
+                        <CircleX size={14} /> Từ chối
+                      </button>
+                      {application.reviewStatus !== 'pending' && (
+                        <button
+                          className="button button-outline"
+                          type="button"
+                          disabled={reviewingId === application.id}
+                          onClick={() => reviewApplication(application.id, 'pending')}
+                        >
+                          Đặt lại
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )
+        ) : loading ? (
           <div className="support-empty">Đang tải yêu cầu...</div>
         ) : requests.length === 0 ? (
           <div className="support-empty">Chưa có biểu mẫu liên hệ nào.</div>
