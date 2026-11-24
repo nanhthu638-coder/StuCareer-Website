@@ -82,7 +82,7 @@ function AuthPage({ mode, notice, onModeChange, onForgotPassword, onBack, onSucc
       if (!isRegister && (
         !user
         || ['name', 'email', 'phone', 'role'].some((field) => typeof user[field] !== 'string')
-        || !['seeker', 'support', 'employer'].includes(user.role)
+        || !['seeker', 'support', 'employer', 'admin'].includes(user.role)
         || typeof result.accessToken !== 'string'
         || !result.accessToken
       )) {

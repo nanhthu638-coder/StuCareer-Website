@@ -10,6 +10,7 @@ import ProfilePage from './ProfilePage.jsx'
 import { requestApiJson } from './api.js'
 import { getJobById } from './jobsData.js'
 import SupportDashboard from './SupportDashboard.jsx'
+import AdminDashboard from './AdminDashboard.jsx'
 import './App.css'
 import CompanyProfile from './CompanyProfile.jsx'
 import ChatbotWidget from './components/chatbot/ChatbotWidget.jsx'
@@ -146,7 +147,7 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
             <span className="account-avatar account-avatar-large" aria-hidden="true">{getInitials(user.name)}</span>
             <div>
               <strong>{user.name}</strong>
-              <span>{user.role === 'support' ? 'Nhân viên hỗ trợ' : 'Thành viên StuWork'}</span>
+                <span>{user.role === 'support' ? 'Nhân viên hỗ trợ' : user.role === 'admin' ? 'Quản trị viên' : 'Thành viên StuWork'}</span>
             </div>
           </div>
           <div className="account-contact"><Mail size={16} /><span>{user.email}</span></div>
@@ -259,7 +260,7 @@ function App() {
     } finally {
       setCurrentUser(null)
       setMenuOpen(false)
-      if (page === 'support' || page === 'profile' || page === 'company') navigateTo('home')
+      if (page === 'support' || page === 'admin' || page === 'profile' || page === 'company') navigateTo('home')
     }
   }
 
@@ -281,8 +282,9 @@ function App() {
           }
 
           setCurrentUser({ ...result.user, accessToken: result.accessToken })
-          navigateTo(result.user.role === 'support' ? 'support' : result.user.role === 'employer' ? 'company' : 'home')
-          showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
+            const landingPages = { support: 'support', admin: 'admin', employer: 'company' }
+            navigateTo(landingPages[result.user.role] ?? 'home')
+            showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
         }}
       />
     )
@@ -303,7 +305,15 @@ function App() {
         onHome={() => navigateTo('home')}
         onLogout={logoutCurrentUser}
       />
-    )
+      )
+  } else if (page === 'admin' && currentUser?.role === 'admin') {
+      pageContent = (
+          <AdminDashboard
+              accessToken={currentUser.accessToken}
+              onHome={() => navigateTo('home')}
+              onLogout={logoutCurrentUser}
+          />
+      )
   } else {
     let mainContent
     if (page === 'job') {
@@ -386,6 +396,9 @@ function App() {
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
                   )}
+                  {currentUser.role === 'admin' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('admin')}>Quản trị tin tuyển dụng</button>
+                  )}
                 </>
               ) : (
                 <div className="mobile-nav-actions">
@@ -418,6 +431,9 @@ function App() {
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
+                  )}
+                  {currentUser.role === 'admin' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('admin')}>Quản trị tin tuyển dụng</button>
                   )}
                 </>
               ) : (

@@ -4338,3 +4338,107 @@ select:focus-visible {
         grid-template-columns: 1fr;
     }
 }
+/* ===== Trang quản trị tin tuyển dụng ===== */
+.admin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 16px;
+}
+
+.admin-tab {
+    padding: 8px 14px;
+    color: #124e66;
+    border: 1px solid #dce5e2;
+    border-radius: 99px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.admin-tab-active {
+    color: #fff;
+    border-color: #124e66;
+    background: #124e66;
+}
+
+.admin-status-pending {
+    color: #9a5700;
+    background: #fff4d6;
+}
+
+.admin-status-approved {
+    color: #23734c;
+    background: #e5f6ec;
+}
+
+.admin-status-rejected {
+    color: #a12a2a;
+    background: #fdeaea;
+}
+
+.admin-status-hidden {
+    color: #475569;
+    background: #eef2f6;
+}
+
+.admin-status-closed {
+    color: #6b3fa0;
+    background: #f1e9fb;
+}
+
+.admin-email-status-sent {
+    color: #23734c;
+    background: #e5f6ec;
+}
+
+.admin-email-status-logged {
+    color: #145a83;
+    background: #e4f3fc;
+}
+
+.admin-email-status-failed {
+    color: #a12a2a;
+    background: #fdeaea;
+}
+
+.admin-job-meta {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+    .admin-actions input {
+        min-width: 220px;
+        min-height: 36px;
+        padding: 0 11px;
+        border: 1px solid #dce5e2;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 12px;
+    }
+
+    .admin-actions .button {
+        min-height: 36px;
+        padding: 0 12px;
+    }
+
+.admin-section-title {
+    margin: 36px 0 12px;
+    color: #124e66;
+    font-size: 18px;
+}
+
+.admin-email-body {
+    margin: 10px 0 0;
+    color: #475569;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
