@@ -10,6 +10,8 @@
     "db:migrate:sqlserver": "node --env-file=.env server/migrate-sqlite-to-sqlserver.js",
     "build": "vite build",
     "lint": "oxlint",
+    "db:seed:sprint3": "node --env-file=.env server/seed-sprint3.js",
+    "demo:result-email": "node --env-file=.env server/demo-result-email.js",
     "preview": "vite preview"
   },
   "dependencies": {
