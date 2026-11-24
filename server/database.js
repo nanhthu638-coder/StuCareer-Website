@@ -71,29 +71,29 @@ function initializeSqlite() {
       category TEXT NOT NULL,
       tone TEXT NOT NULL DEFAULT 'momo',
       logo TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        requirements TEXT NOT NULL DEFAULT '[]',
-        benefits TEXT NOT NULL DEFAULT '[]',
-        slots INTEGER NOT NULL DEFAULT 1,
-        deadline TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      requirements TEXT NOT NULL DEFAULT '[]',
+      benefits TEXT NOT NULL DEFAULT '[]',
+      slots INTEGER NOT NULL DEFAULT 1,
+      deadline TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `)
-    for (const [column, definition] of [
-        ['status', `TEXT NOT NULL DEFAULT 'pending'`],
-        ['review_note', 'TEXT'],
-        ['reviewed_at', 'TEXT'],
-          ['description', `TEXT NOT NULL DEFAULT ''`],
-          ['requirements', `TEXT NOT NULL DEFAULT '[]'`],
-          ['benefits', `TEXT NOT NULL DEFAULT '[]'`],
-          ['slots', 'INTEGER NOT NULL DEFAULT 1'],
-          ['deadline', 'TEXT'],
-    ]) {
-        if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
-            sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
-        }
+  for (const [column, definition] of [
+    ['status', `TEXT NOT NULL DEFAULT 'pending'`],
+    ['review_note', 'TEXT'],
+    ['reviewed_at', 'TEXT'],
+    ['description', `TEXT NOT NULL DEFAULT ''`],
+    ['requirements', `TEXT NOT NULL DEFAULT '[]'`],
+    ['benefits', `TEXT NOT NULL DEFAULT '[]'`],
+    ['slots', 'INTEGER NOT NULL DEFAULT 1'],
+    ['deadline', 'TEXT'],
+  ]) {
+    if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
+      sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
     }
-    sqliteDatabase.exec(`
+  }
+  sqliteDatabase.exec(`
     CREATE TABLE IF NOT EXISTS email_outbox (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       to_email TEXT NOT NULL,
@@ -256,16 +256,16 @@ export async function ensureSqlServerSchema(pool) {
        deadline NVARCHAR(20) NULL,
        created_at DATETIME2 NOT NULL CONSTRAINT DF_jobs_created_at DEFAULT SYSUTCDATETIME()
      )`, [
-          ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
-          ['review_note', 'NVARCHAR(500) NULL'],
-          ['reviewed_at', 'DATETIME2 NULL'],
-          ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
-          ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
-          ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
-          ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
-          ['deadline', 'NVARCHAR(20) NULL'],
-      ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
-      `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
+      ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
+      ['review_note', 'NVARCHAR(500) NULL'],
+      ['reviewed_at', 'DATETIME2 NULL'],
+      ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
+      ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
+      ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
+      ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
+      ['deadline', 'NVARCHAR(20) NULL'],
+    ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
+    `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
      CREATE TABLE dbo.email_outbox (
        id INT IDENTITY(1,1) PRIMARY KEY,
        to_email NVARCHAR(254) NOT NULL,

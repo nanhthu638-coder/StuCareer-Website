@@ -22,7 +22,11 @@ const tables = [
   },
   {
     name: 'jobs',
-      columns: ['id', 'title', 'company', 'location', 'salary_min', 'salary_max', 'type', 'category', 'tone', 'logo', 'created_at', 'status', 'review_note', 'reviewed_at'],
+    columns: [
+      'id', 'title', 'company', 'location', 'salary_min', 'salary_max', 'type', 'category',
+      'tone', 'logo', 'description', 'requirements', 'benefits', 'slots', 'deadline',
+      'created_at', 'status', 'review_note', 'reviewed_at',
+    ],
   },
   {
     name: 'companies',
@@ -30,7 +34,18 @@ const tables = [
   },
   {
     name: 'applications',
-    columns: ['id', 'user_id', 'job_id', 'cover_letter', 'cv_path', 'cv_original_name', 'status', 'created_at'],
+    columns: [
+      'id', 'user_id', 'job_id', 'cover_letter', 'cv_path', 'cv_original_name',
+      'status', 'decision_status', 'created_at',
+    ],
+  },
+  {
+    name: 'bookmarks',
+    columns: ['id', 'user_id', 'job_id', 'created_at'],
+  },
+  {
+    name: 'email_outbox',
+    columns: ['id', 'to_email', 'subject', 'body', 'status', 'error', 'created_at'],
   },
 ]
 
