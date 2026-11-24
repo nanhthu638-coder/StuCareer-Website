@@ -1,33 +1,47 @@
+# Chức năng mới trong StuCareer
 
+## 1. Quản lý ứng viên (tài khoản nhà tuyển dụng)
+- Mở **Thông tin doanh nghiệp** từ menu tài khoản.
+- Chọn tab **Danh sách ứng viên** để xem hồ sơ, thông tin liên hệ, trường/ngành, kỹ năng và thư giới thiệu.
+- Chọn **Tải CV** để tải CV ứng viên.
+- Chọn **Trúng tuyển** hoặc **Từ chối** để cập nhật kết quả.
 
-# StuWork
+Lưu ý: Để phân quyền dữ liệu trong phiên bản hiện tại, tên doanh nghiệp trong **Thông tin doanh nghiệp** phải trùng với tên công ty của tin tuyển dụng (không phân biệt chữ hoa/chữ thường).
 
-Trang tuyển dụng dành cho sinh viên, xây dựng bằng React, Tailwind CSS và Vite. Giao diện có trang chủ responsive, đăng nhập/đăng ký, khôi phục mật khẩu bằng OTP demo và API Node.js dùng bcrypt để băm mật khẩu.
+## 2. Quy tắc slot
+- Hồ sơ chờ xử lý và hồ sơ trúng tuyển đều chiếm slot.
+- Hồ sơ bị từ chối không còn chiếm slot, vì vậy slot được giải phóng.
+- Ứng viên rút đơn cũng giải phóng slot như trước.
+- Việc kiểm tra và cập nhật kết quả được thực hiện trong transaction để tránh cập nhật đồng thời gây sai số.
 
-## Chạy ứng dụng
+## 3. Lưu tin tuyển dụng
+- Ứng viên đăng nhập, mở chi tiết tin và bấm **Lưu tin tuyển dụng**.
+- Mở menu tài khoản để xem mục **Tin tuyển dụng đã lưu**.
+- Có thể bỏ lưu ngay tại trang chi tiết tin.
+- Bookmark được lưu trong cơ sở dữ liệu, không mất khi đăng xuất.
 
-Yêu cầu Node.js 22 trở lên.
-
+## 4. Khởi chạy
 ```bash
 npm install
 npm run dev
 ```
 
-Lệnh trên khởi chạy Vite tại `http://localhost:5173` và API tại `http://localhost:3001`. Tạo tài khoản để thử đăng nhập; dữ liệu tài khoản được lưu trong SQLite tại `server/data/stuwork.sqlite` và mật khẩu được băm bằng bcrypt.
+Có thể chạy ở chế độ SQLite mặc định mà không cần tạo `.env`. Khi máy chủ khởi động lần đầu, 12 tin tuyển dụng mẫu sẽ được thêm vào cơ sở dữ liệu; các lần chạy sau không tạo bản ghi trùng. Danh sách, chi tiết, ứng tuyển và tin đã lưu cùng sử dụng dữ liệu trong cơ sở dữ liệu.
 
-Trong môi trường phát triển, OTP được tạo ngẫu nhiên và hiển thị trong giao diện để tiện thử luồng đặt lại mật khẩu. API không gửi email hoặc SMS thật. Endpoint OTP sẽ từ chối chạy trong môi trường production cho đến khi tích hợp nhà cung cấp gửi mã. Bộ nhớ OTP và mã đặt lại chỉ tồn tại trong thời gian chạy của API.
+Cơ sở dữ liệu hiện tại sẽ tự động thêm các cột còn thiếu cho tin tuyển dụng, cột `decision_status` và bảng `bookmarks` khi máy chủ khởi động.
 
-Để bật hộp thư hỗ trợ, cấu hình đầy đủ `SUPPORT_NAME`, `SUPPORT_EMAIL`, `SUPPORT_PHONE` và `SUPPORT_PASSWORD` trước khi chạy API. Nếu không cấu hình, tài khoản hỗ trợ sẽ không được tạo. Phiên đăng nhập được lưu trong bộ nhớ và hết hạn sau 12 giờ; khởi động lại API sẽ kết thúc các phiên hiện tại.
+## 5. Nạp dữ liệu demo để xem các luồng tuyển dụng
 
-SQLite và các file WAL/SHM nằm trong `server/data/` và không được Git theo dõi. Không xóa các file này khi ứng dụng đang chạy; hãy sao lưu cả bộ trước khi di chuyển dữ liệu.
-
-## Kiểm tra
+Đặt `DEMO_PASSWORD` (8–72 byte) trong file `.env.demo`, sau đó chạy:
 
 ```bash
-npm run build
-npm run lint
+npm run db:seed:demo
 ```
 
-## Ghi chú triển khai
+Lệnh thêm một doanh nghiệp demo, ba tin đã duyệt, bốn ứng viên có hồ sơ/CV, các đơn ở trạng thái chờ/trúng tuyển/từ chối và tin đã lưu. Có thể chạy lại mà không tạo bản ghi trùng. Các tài khoản demo dùng chung `DEMO_PASSWORD`:
 
-Đây là nền tảng giao diện và API mẫu, chưa bao gồm xác thực email/số điện thoại, tích hợp OAuth, nhà cung cấp gửi OTP, lưu phiên đăng nhập bền vững, giới hạn tốc độ phân tán hoặc quy trình vận hành production. Cần bổ sung các thành phần đó trước khi triển khai xác thực cho người dùng thực.
+- Nhà tuyển dụng: `demo.employer@stucareer.test`
+- Ứng viên: `demo.student.01@stucareer.test` đến `demo.student.04@stucareer.test`
+- Mật khẩu: 31f0b2ed20b41b0287d5480799e60e57d86a
+
+Đăng nhập nhà tuyển dụng, mở **Thông tin doanh nghiệp → Danh sách ứng viên** để xem hồ sơ và tải CV. Đăng nhập ứng viên rồi mở menu tài khoản để xem **Lịch sử ứng tuyển** và **Tin tuyển dụng đã lưu**. Ba tin mẫu mới cũng xuất hiện trên trang chủ.

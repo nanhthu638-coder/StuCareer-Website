@@ -1,15 +1,61 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileText, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Download, FileText, Trash2, Upload, X } from 'lucide-react'
 import { downloadApiFile, requestApiJson, uploadApiFile } from './api.js'
+import './ProfilePage.css'
 
 const maxCvBytes = 5 * 1024 * 1024
 const allowedExtensions = ['.pdf', '.doc', '.docx']
+const universities = [
+  'Đại học Bách khoa Hà Nội',
+  'Đại học Công nghệ - ĐHQGHN',
+  'Đại học Kinh tế Quốc dân',
+  'Đại học Ngoại thương',
+  'Đại học Kinh tế TP. Hồ Chí Minh',
+  'Đại học Bách khoa - ĐHQG TP. Hồ Chí Minh',
+  'Đại học FPT',
+  'Đại học RMIT Việt Nam',
+]
+const majors = [
+  'Công nghệ thông tin',
+  'Marketing',
+  'Hệ thống thông tin',
+  'Kinh doanh',
+  'Thiết kế sáng tạo',
+  'Tài chính - Kế toán',
+  'Khoa học dữ liệu',
+  'Truyền thông',
+  'Quản trị nhân lực',
+]
+const skillsByMajor = {
+  'Công nghệ thông tin': ['ReactJS', 'JavaScript', 'HTML/CSS', 'Node.js', 'SQL', 'REST API', 'Git', 'Kiểm thử phần mềm', 'Giao tiếp'],
+  Marketing: ['Marketing nội dung', 'SEO', 'Google Analytics', 'Social Media', 'Copywriting', 'Canva', 'Excel', 'Giao tiếp'],
+  'Hệ thống thông tin': ['Excel', 'SQL', 'Phân tích dữ liệu', 'Power BI', 'Quy trình nghiệp vụ', 'Giao tiếp', 'PowerPoint'],
+  'Kinh doanh': ['Excel', 'Giao tiếp', 'Đàm phán', 'Phân tích dữ liệu', 'PowerPoint', 'Chăm sóc khách hàng'],
+  'Thiết kế sáng tạo': ['Figma', 'UI/UX', 'Photoshop', 'Illustrator', 'Canva', 'Typography', 'Giao tiếp'],
+  'Tài chính - Kế toán': ['Excel', 'Phân tích dữ liệu', 'Kế toán', 'Power BI', 'Cẩn thận', 'Giao tiếp'],
+  'Khoa học dữ liệu': ['Python', 'SQL', 'Excel', 'Phân tích dữ liệu', 'Power BI', 'Machine Learning'],
+  'Truyền thông': ['Copywriting', 'Social Media', 'Canva', 'Quay dựng video', 'Giao tiếp', 'Lên kế hoạch nội dung'],
+  'Quản trị nhân lực': ['Giao tiếp', 'Excel', 'Tuyển dụng', 'Làm việc nhóm', 'PowerPoint'],
+}
+
+function parseSkills(value) {
+  return [...new Set(String(value || '').split(',').map((skill) => skill.trim()).filter(Boolean))]
+}
 
 function ProfilePage({ accessToken, onBack, onProfileSaved, onNotice }) {
   const [profile, setProfile] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
   const [cvError, setCvError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+  const [university, setUniversity] = useState('')
+  const [universityOptionsOpen, setUniversityOptionsOpen] = useState(false)
+  const [manualUniversity, setManualUniversity] = useState(false)
+  const [major, setMajor] = useState('')
+  const [skillTags, setSkillTags] = useState([])
+  const [skillDraft, setSkillDraft] = useState('')
+  const [skillSuggestionsOpen, setSkillSuggestionsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [cvBusy, setCvBusy] = useState(false)
   const fileInput = useRef(null)
@@ -17,16 +63,31 @@ function ProfilePage({ accessToken, onBack, onProfileSaved, onNotice }) {
   useEffect(() => {
     let cancelled = false
     requestApiJson('/api/profile', { accessToken })
-      .then((result) => { if (!cancelled) setProfile(result.profile) })
+      .then((result) => {
+        if (cancelled) return
+        setProfile(result.profile)
+        setUniversity(result.profile.university || '')
+        setManualUniversity(Boolean(result.profile.university && !universities.includes(result.profile.university)))
+        setMajor(result.profile.major || '')
+        setSkillTags(parseSkills(result.profile.skills))
+      })
       .catch((requestError) => { if (!cancelled) setLoadError(requestError.message) })
     return () => { cancelled = true }
   }, [accessToken])
 
   const handleSave = async (event) => {
     event.preventDefault()
+    setAttemptedSubmit(true)
     setError('')
+    if (skillTags.length === 0) {
+      setFieldErrors((current) => ({ ...current, skills: 'Vui lòng thêm ít nhất một kỹ năng.' }))
+      return
+    }
     setSaving(true)
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    values.university = university.trim()
+    values.major = major
+    values.skills = skillTags.join(', ')
     try {
       const result = await requestApiJson('/api/profile', { method: 'PUT', body: values, accessToken })
       setProfile(result.profile)
@@ -38,6 +99,36 @@ function ProfilePage({ accessToken, onBack, onProfileSaved, onNotice }) {
       setSaving(false)
     }
   }
+
+  const addSkill = (value = skillDraft) => {
+    const skill = value.trim()
+    if (!skill) return
+    if (skillTags.some((tag) => tag.toLocaleLowerCase('vi') === skill.toLocaleLowerCase('vi'))) {
+      setSkillDraft('')
+      setSkillSuggestionsOpen(false)
+      return
+    }
+    if (`${skillTags.join(', ')}${skillTags.length ? ', ' : ''}${skill}`.length > 300) {
+      setFieldErrors((current) => ({ ...current, skills: 'Tổng độ dài kỹ năng tối đa 300 ký tự.' }))
+      return
+    }
+    setSkillTags((current) => [...current, skill])
+    setSkillDraft('')
+    setFieldErrors((current) => ({ ...current, skills: '' }))
+    setSkillSuggestionsOpen(false)
+  }
+
+  const removeSkill = (skillToRemove) => {
+    setSkillTags((current) => current.filter((skill) => skill !== skillToRemove))
+  }
+
+  const skillOptions = skillsByMajor[major] || [...new Set(Object.values(skillsByMajor).flat())]
+  const filteredSkillOptions = skillOptions
+    .filter((skill) => !skillTags.includes(skill) && skill.toLocaleLowerCase('vi').includes(skillDraft.trim().toLocaleLowerCase('vi')))
+    .slice(0, 7)
+  const filteredUniversities = universities.filter((school) => (
+    school.toLocaleLowerCase('vi').includes(university.trim().toLocaleLowerCase('vi'))
+  ))
 
   const handleCvChange = async (event) => {
     const file = event.target.files?.[0]
@@ -101,38 +192,187 @@ function ProfilePage({ accessToken, onBack, onProfileSaved, onNotice }) {
 
         {profile && (
           <div className="profile-layout">
-            <form className="contact-form profile-card" onSubmit={handleSave}>
+            <form
+              className={`contact-form profile-card profile-edit-form${attemptedSubmit ? ' profile-edit-form-attempted' : ''}`}
+              onSubmit={handleSave}
+              onInvalidCapture={() => setAttemptedSubmit(true)}
+            >
               <h2>Thông tin cá nhân</h2>
               <div className="contact-form-fields">
-                <label>
+                <label className="profile-field">
                   <span>Họ và tên</span>
                   <input name="name" type="text" defaultValue={profile.name} minLength="2" maxLength="80" required />
                 </label>
-                <label>
+                <label className="profile-field">
                   <span>Số điện thoại</span>
                   <input name="phone" type="tel" defaultValue={profile.phone} required />
                 </label>
-                <label className="contact-form-subject">
+                <label className="contact-form-subject profile-field">
                   <span>Email (không thể thay đổi)</span>
                   <input type="email" value={profile.email} readOnly disabled />
                 </label>
-                <label>
-                  <span>Trường đại học</span>
-                  <input name="university" type="text" defaultValue={profile.university} maxLength="120" />
+                <div className="profile-field profile-university-field">
+                  <label htmlFor="profile-university">Trường đại học</label>
+                  <div
+                    className="profile-combobox"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setUniversityOptionsOpen(false)
+                    }}
+                  >
+                    <div className="profile-combobox-input-wrap">
+                      <input
+                        id="profile-university"
+                        name="university"
+                        type="text"
+                        role="combobox"
+                        aria-expanded={universityOptionsOpen && !manualUniversity}
+                        aria-controls="profile-university-options"
+                        aria-autocomplete="list"
+                        autoComplete="off"
+                        value={university}
+                        placeholder={manualUniversity ? 'Nhập tên trường của bạn' : 'Tìm trường đại học...'}
+                        maxLength="120"
+                        onFocus={() => { if (!manualUniversity) setUniversityOptionsOpen(true) }}
+                        onChange={(event) => {
+                          setUniversity(event.target.value)
+                          setManualUniversity(false)
+                          setUniversityOptionsOpen(true)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setUniversityOptionsOpen(false)
+                        }}
+                      />
+                      {!manualUniversity && (
+                        <button
+                          type="button"
+                          aria-label="Mở danh sách trường"
+                          onClick={() => setUniversityOptionsOpen((open) => !open)}
+                        >
+                          <ChevronDown size={16} />
+                        </button>
+                      )}
+                    </div>
+                    {!manualUniversity && universityOptionsOpen && (
+                      <div className="profile-combobox-options" id="profile-university-options" role="listbox" aria-label="Trường đại học">
+                        {filteredUniversities.map((school) => (
+                          <button
+                            key={school}
+                            type="button"
+                            role="option"
+                            aria-selected={university === school}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setUniversity(school)
+                              setUniversityOptionsOpen(false)
+                            }}
+                          >
+                            {school}
+                          </button>
+                        ))}
+                        <button
+                          className="profile-combobox-other"
+                          type="button"
+                          role="option"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setUniversity('')
+                            setManualUniversity(true)
+                            setUniversityOptionsOpen(false)
+                          }}
+                        >
+                          Khác - Nhập tay
+                        </button>
+                      </div>
+                    )}
+                    {manualUniversity && (
+                      <button className="profile-combobox-switch" type="button" onClick={() => {
+                        setManualUniversity(false)
+                        setUniversityOptionsOpen(true)
+                        setUniversity('')
+                      }}>
+                        Chọn trường trong danh sách
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <label className={`profile-field${fieldErrors.major || (attemptedSubmit && !major) ? ' profile-field-invalid' : ''}`}>
+                  <span>Ngành học <b>*</b></span>
+                  <select
+                    name="major"
+                    value={major}
+                    required
+                    aria-invalid={Boolean(fieldErrors.major || (attemptedSubmit && !major))}
+                    onChange={(event) => {
+                      setMajor(event.target.value)
+                      setFieldErrors((current) => ({ ...current, major: '' }))
+                    }}
+                  >
+                    <option value="" disabled>Chọn ngành học</option>
+                    {majors.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
                 </label>
-                <label>
-                  <span>Ngành học</span>
-                  <input name="major" type="text" defaultValue={profile.major} maxLength="120" />
-                </label>
-                <label>
+                <label className="profile-field">
                   <span>Năm tốt nghiệp</span>
                   <input name="graduationYear" type="number" defaultValue={profile.graduationYear} min="2000" max="2100" />
                 </label>
-                <label>
-                  <span>Kỹ năng (cách nhau bằng dấu phẩy)</span>
-                  <input name="skills" type="text" defaultValue={profile.skills} maxLength="300" />
-                </label>
-                <label className="contact-form-message">
+                <div className={`profile-field profile-skills-field${fieldErrors.skills ? ' profile-field-invalid' : ''}`}>
+                  <label htmlFor="profile-skills-input">Kỹ năng <b>*</b></label>
+                  <div
+                    className="profile-skill-combobox"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setSkillSuggestionsOpen(false)
+                    }}
+                  >
+                    <div className="profile-skill-tags">
+                      {skillTags.map((skill) => (
+                        <span className="profile-skill-tag" key={skill}>
+                          {skill}
+                          <button type="button" aria-label={`Xóa kỹ năng ${skill}`} onClick={() => removeSkill(skill)}>
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                      <input
+                        id="profile-skills-input"
+                        type="text"
+                        value={skillDraft}
+                        maxLength="45"
+                        placeholder={skillTags.length ? 'Thêm kỹ năng...' : 'Gõ kỹ năng, nhấn Enter...'}
+                        aria-invalid={Boolean(fieldErrors.skills)}
+                        aria-describedby={fieldErrors.skills ? 'profile-skills-error' : undefined}
+                        autoComplete="off"
+                        onFocus={() => setSkillSuggestionsOpen(true)}
+                        onChange={(event) => setSkillDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            addSkill()
+                          }
+                          if (event.key === 'Escape') setSkillSuggestionsOpen(false)
+                        }}
+                      />
+                    </div>
+                    {skillSuggestionsOpen && filteredSkillOptions.length > 0 && (
+                      <div className="profile-skill-suggestions" role="listbox" aria-label="Kỹ năng gợi ý">
+                        {filteredSkillOptions.map((skill) => (
+                          <button
+                            type="button"
+                            role="option"
+                            key={skill}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => addSkill(skill)}
+                          >
+                            {skill}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <input type="hidden" name="skills" value={skillTags.join(', ')} />
+                  {fieldErrors.skills && <small id="profile-skills-error" className="profile-inline-error" role="alert">{fieldErrors.skills}</small>}
+                  {!fieldErrors.skills && <small className="profile-field-hint">Gợi ý được cá nhân hóa theo ngành học.</small>}
+                </div>
+                <label className="contact-form-message profile-field">
                   <span>Giới thiệu bản thân</span>
                   <textarea name="bio" rows="4" defaultValue={profile.bio} maxLength="1000" />
                 </label>

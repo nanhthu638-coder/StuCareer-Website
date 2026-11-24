@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowUpRight, BriefcaseBusiness, Building2, Check, ChevronDown, CircleCheck, ClipboardList, LogOut, Mail, Menu, Phone, UserPen, UserRound, X } from 'lucide-react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import AuthPage from './AuthPage.jsx'
 import ContactForm from './ContactForm.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
@@ -7,10 +8,14 @@ import HomePage from './HomePage.jsx'
 import JobDetail from './JobDetail.jsx'
 import ProfilePage from './ProfilePage.jsx'
 import { requestApiJson } from './api.js'
-import { getJobById } from './jobsData.js'
+import { toJobViewModel } from './jobViewModel.js'
 import SupportDashboard from './SupportDashboard.jsx'
+import AdminDashboard from './AdminDashboard.jsx'
+import ReviewStatus from './ReviewStatus.jsx'
 import './App.css'
 import CompanyProfile from './CompanyProfile.jsx'
+import ChatbotWidget from './components/chatbot/ChatbotWidget.jsx'
+import NotificationBell from './components/notifications/NotificationBell.jsx'
 
 function getInitials(name) {
   return name
@@ -117,13 +122,22 @@ function formatApplicationDate(value) {
 
 function AccountOverview({ user, applicationsVersion, onViewJob }) {
   const [applications, setApplications] = useState([])
+  const [bookmarks, setBookmarks] = useState([])
 
   useEffect(() => {
     if (user.role !== 'seeker') return undefined
     let cancelled = false
-    requestApiJson('/api/applications', { accessToken: user.accessToken })
-      .then((result) => { if (!cancelled) setApplications(result.applications) })
-      .catch(() => { if (!cancelled) setApplications([]) })
+    Promise.all([
+      requestApiJson('/api/applications', { accessToken: user.accessToken }),
+      requestApiJson('/api/bookmarks', { accessToken: user.accessToken }),
+    ])
+      .then(([applicationResult, bookmarkResult]) => {
+        if (!cancelled) {
+          setApplications(applicationResult.applications)
+          setBookmarks(bookmarkResult.bookmarks)
+        }
+      })
+      .catch(() => { if (!cancelled) { setApplications([]); setBookmarks([]) } })
     return () => { cancelled = true }
   }, [user.role, user.accessToken, applicationsVersion])
 
@@ -143,7 +157,7 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
             <span className="account-avatar account-avatar-large" aria-hidden="true">{getInitials(user.name)}</span>
             <div>
               <strong>{user.name}</strong>
-              <span>{user.role === 'support' ? 'Nhân viên hỗ trợ' : 'Thành viên StuWork'}</span>
+                <span>{user.role === 'support' ? 'Nhân viên hỗ trợ' : user.role === 'admin' ? 'Quản trị viên' : 'Thành viên StuWork'}</span>
             </div>
           </div>
           <div className="account-contact"><Mail size={16} /><span>{user.email}</span></div>
@@ -167,17 +181,40 @@ function AccountOverview({ user, applicationsVersion, onViewJob }) {
                     {application.title}
                   </button>
                   <span>{application.company} · {formatApplicationDate(application.createdAt)}</span>
+                  <ReviewStatus status={application.decisionStatus} />
                 </li>
               ))}
             </ul>
           )}
         </article>
+        {user.role === 'seeker' && (
+          <article className="account-card account-bookmarks">
+            <div className="account-card-heading">
+              <span className="account-card-icon"><BriefcaseBusiness size={19} /></span>
+              <h2>Tin tuyển dụng đã lưu</h2>
+            </div>
+            {bookmarks.length === 0 ? (
+              <div className="application-history-empty"><p>Bạn chưa lưu tin tuyển dụng nào.</p></div>
+            ) : (
+              <ul className="application-history-list">
+                {bookmarks.map((item) => (
+                  <li key={item.jobId}>
+                    <button type="button" className="job-title-link" onClick={() => onViewJob(item.jobId)}>{item.title}</button>
+                    <span>{item.company}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+        )}
       </div>
     </section>
   )
 }
 
 function App() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [page, setPage] = useState('home')
   const [selectedJob, setSelectedJob] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
@@ -185,6 +222,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [applicationsVersion, setApplicationsVersion] = useState(0)
+  const [profileVersion, setProfileVersion] = useState(0)
   const navigationTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(navigationTimer.current), [])
@@ -215,14 +253,22 @@ function App() {
     setMenuOpen(false)
   }
 
-  const openJob = (jobOrId) => {
-    const job = typeof jobOrId === 'object' && jobOrId !== null
-      ? jobOrId
-      : getJobById(jobOrId)
+  const openJob = async (jobOrId) => {
+    let job = typeof jobOrId === 'object' && jobOrId !== null ? jobOrId : null
+    if (!job) {
+      try {
+        const result = await requestApiJson(`/api/jobs/${jobOrId}`)
+        job = toJobViewModel(result.job)
+      } catch (error) {
+        showNotice(error.message || 'Không thể tải thông tin công việc.')
+        return
+      }
+    }
     if (!job?.id) {
       showNotice('Không tìm thấy công việc này.')
       return
     }
+    if (location.pathname.startsWith('/company/')) navigate('/')
     setSelectedJob(job)
     navigateTo('job')
     setMenuOpen(false)
@@ -252,7 +298,7 @@ function App() {
     } finally {
       setCurrentUser(null)
       setMenuOpen(false)
-      if (page === 'support' || page === 'profile' || page === 'company') navigateTo('home')
+      if (page === 'support' || page === 'admin' || page === 'profile' || page === 'company') navigateTo('home')
     }
   }
 
@@ -274,8 +320,9 @@ function App() {
           }
 
           setCurrentUser({ ...result.user, accessToken: result.accessToken })
-          navigateTo(result.user.role === 'support' ? 'support' : result.user.role === 'employer' ? 'company' : 'home')
-          showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
+            const landingPages = { support: 'support', admin: 'admin', employer: 'company' }
+            navigateTo(landingPages[result.user.role] ?? 'home')
+            showNotice(`Đăng nhập thành công. Chào mừng ${result.user.name}!`)
         }}
       />
     )
@@ -296,7 +343,15 @@ function App() {
         onHome={() => navigateTo('home')}
         onLogout={logoutCurrentUser}
       />
-    )
+      )
+  } else if (page === 'admin' && currentUser?.role === 'admin') {
+      pageContent = (
+          <AdminDashboard
+              accessToken={currentUser.accessToken}
+              onHome={() => navigateTo('home')}
+              onLogout={logoutCurrentUser}
+          />
+      )
   } else {
     let mainContent
     if (page === 'job') {
@@ -318,7 +373,10 @@ function App() {
         <ProfilePage
           accessToken={currentUser.accessToken}
           onBack={() => navigateTo('home')}
-          onProfileSaved={(profile) => setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))}
+          onProfileSaved={(profile) => {
+            setCurrentUser((user) => ({ ...user, name: profile.name, phone: profile.phone }))
+            setProfileVersion((version) => version + 1)
+          }}
           onNotice={showNotice}
         />
       )
@@ -376,6 +434,9 @@ function App() {
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
                   )}
+                  {currentUser.role === 'admin' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('admin')}>Quản trị tin tuyển dụng</button>
+                  )}
                 </>
               ) : (
                 <div className="mobile-nav-actions">
@@ -384,6 +445,15 @@ function App() {
                 </div>
               )}
             </nav>
+
+            {currentUser?.role === 'seeker' && (
+              <NotificationBell
+                key={currentUser.id}
+                accessToken={currentUser.accessToken}
+                profileVersion={profileVersion}
+                onNavigateCompany={(companyId) => navigate(`/company/${companyId}`)}
+              />
+            )}
 
             <div className="header-actions">
               {currentUser ? (
@@ -399,6 +469,9 @@ function App() {
                   />
                   {currentUser.role === 'support' && (
                     <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('support')}>Hộp thư hỗ trợ</button>
+                  )}
+                  {currentUser.role === 'admin' && (
+                    <button className="button button-outline support-nav-button" type="button" onClick={() => navigateTo('admin')}>Quản trị tin tuyển dụng</button>
                   )}
                 </>
               ) : (
@@ -443,9 +516,17 @@ function App() {
   }
 
   return (
-    <div className={`page-transition page-transition-${transitionState}`} aria-busy={transitionState !== 'idle'}>
-      {pageContent}
-    </div>
+    <>
+      <div className={`page-transition page-transition-${transitionState}`} aria-busy={transitionState !== 'idle'}>
+        {location.pathname.startsWith('/company/')
+          ? <Outlet context={{ onViewJob: openJob }} />
+          : pageContent}
+      </div>
+      <ChatbotWidget
+        onViewCompany={(company) => navigate(`/company/${company.id}`)}
+        onApplyJob={(job) => openJob(job.id)}
+      />
+    </>
   )
 }
 

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, BadgeCheck, BriefcaseBusiness, Building2, CalendarDays, CircleDollarSign, MapPin, UsersRound } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, BookmarkCheck, BriefcaseBusiness, Building2, CalendarDays, CircleDollarSign, MapPin, UsersRound } from 'lucide-react'
 import { requestApiJson } from './api.js'
-import { getJobById } from './jobsData.js'
+import ReviewStatus from './ReviewStatus.jsx'
 
 function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEditProfile, onNotice, onApplicationsChanged }) {
-    const job = selectedJob || getJobById(jobId)
+    const job = selectedJob
     const accessToken = currentUser?.accessToken
     const isSeeker = currentUser?.role === 'seeker'
     const [availability, setAvailability] = useState(null)
     const [coverLetter, setCoverLetter] = useState('')
     const [applyError, setApplyError] = useState('')
     const [busy, setBusy] = useState(false)
+    const [isBookmarked, setIsBookmarked] = useState(false)
+    const [bookmarkBusy, setBookmarkBusy] = useState(false)
 
     // lấy số slot còn lại (và trạng thái ứng tuyển của người đang đăng nhập) từ server
     const loadAvailability = useCallback(async () => {
@@ -20,6 +22,34 @@ function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEd
             setAvailability(null)
         }
     }, [jobId, accessToken])
+
+    useEffect(() => {
+        let cancelled = false
+        if (!isSeeker) { setIsBookmarked(false); return undefined }
+        requestApiJson('/api/bookmarks', { accessToken })
+            .then((result) => { if (!cancelled) setIsBookmarked(result.bookmarks.some((item) => item.jobId === Number(jobId))) })
+            .catch(() => { if (!cancelled) setIsBookmarked(false) })
+        return () => { cancelled = true }
+    }, [jobId, accessToken, isSeeker])
+
+    const toggleBookmark = async () => {
+        setBookmarkBusy(true)
+        try {
+            if (isBookmarked) {
+                await requestApiJson(`/api/bookmarks/${jobId}`, { method: 'DELETE', accessToken })
+                setIsBookmarked(false)
+                onNotice('Đã bỏ lưu tin tuyển dụng.')
+            } else {
+                await requestApiJson(`/api/bookmarks/${jobId}`, { method: 'POST', accessToken })
+                setIsBookmarked(true)
+                onNotice('Đã lưu tin tuyển dụng.')
+            }
+        } catch (error) {
+            onNotice(error.message || 'Không thể cập nhật tin đã lưu.')
+        } finally {
+            setBookmarkBusy(false)
+        }
+    }
 
     useEffect(() => {
         let cancelled = false
@@ -110,6 +140,12 @@ function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEd
                                 </div>
                             </div>
                         </header>
+                        {isSeeker && (
+                            <button className="button button-outline job-bookmark-button" type="button" disabled={bookmarkBusy} onClick={toggleBookmark}>
+                                {isBookmarked ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
+                                {isBookmarked ? 'Đã lưu tin' : 'Lưu tin tuyển dụng'}
+                            </button>
+                        )}
 
                         <section>
                             <h2>Mô tả công việc</h2>
@@ -163,6 +199,7 @@ function JobDetail({ job: selectedJob, jobId, currentUser, onBack, onLogin, onEd
                             {isSeeker && availability?.application && (
                                 <>
                                     <p className="apply-status apply-status-done">Bạn đã ứng tuyển công việc này.</p>
+                                    <ReviewStatus status={availability.application.decisionStatus} />
                                     <button className="button button-outline apply-main" type="button" disabled={busy} onClick={handleWithdraw}>
                                         Rút đơn ứng tuyển
                                     </button>

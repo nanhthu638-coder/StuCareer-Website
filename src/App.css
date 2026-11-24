@@ -4052,6 +4052,32 @@ select:focus-visible {
   font-size: 11px;
 }
 
+.review-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.review-status-pending {
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.review-status-accepted {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.review-status-rejected {
+  color: #b42318;
+  background: #fef3f2;
+}
+
 .profile-page {
   background: #f8fafb;
 }
@@ -4338,3 +4364,123 @@ select:focus-visible {
         grid-template-columns: 1fr;
     }
 }
+/* ===== Trang quản trị tin tuyển dụng ===== */
+.admin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 16px;
+}
+
+.admin-tab {
+    padding: 8px 14px;
+    color: #124e66;
+    border: 1px solid #dce5e2;
+    border-radius: 99px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.admin-tab-active {
+    color: #fff;
+    border-color: #124e66;
+    background: #124e66;
+}
+
+.admin-status-pending {
+    color: #9a5700;
+    background: #fff4d6;
+}
+
+.admin-status-approved {
+    color: #23734c;
+    background: #e5f6ec;
+}
+
+.admin-status-rejected {
+    color: #a12a2a;
+    background: #fdeaea;
+}
+
+.admin-status-hidden {
+    color: #475569;
+    background: #eef2f6;
+}
+
+.admin-status-closed {
+    color: #6b3fa0;
+    background: #f1e9fb;
+}
+
+.admin-email-status-sent {
+    color: #23734c;
+    background: #e5f6ec;
+}
+
+.admin-email-status-logged {
+    color: #145a83;
+    background: #e4f3fc;
+}
+
+.admin-email-status-failed {
+    color: #a12a2a;
+    background: #fdeaea;
+}
+
+.admin-job-meta {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+    .admin-actions input {
+        min-width: 220px;
+        min-height: 36px;
+        padding: 0 11px;
+        border: 1px solid #dce5e2;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 12px;
+    }
+
+    .admin-actions .button {
+        min-height: 36px;
+        padding: 0 12px;
+    }
+
+.admin-section-title {
+    margin: 36px 0 12px;
+    color: #124e66;
+    font-size: 18px;
+}
+
+.admin-email-body {
+    margin: 10px 0 0;
+    color: #475569;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+/* Applicant management and saved-job actions */
+.company-tabs{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+.company-tab{display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;color:#344054;font-weight:600;cursor:pointer}
+.company-tab-active{background:#eef4ff;border-color:#8bb5ff;color:#175cd3}
+.company-applicant-list{display:grid;gap:14px}
+.company-applicant-card{border:1px solid #e4e7ec;border-radius:14px;padding:18px;background:#fff}
+.company-applicant-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.company-applicant-heading h2{margin:0 0 5px;font-size:18px}
+.company-applicant-heading p,.company-applicant-details p{margin:4px 0;color:#667085}
+.company-applicant-details{margin:14px 0}
+.company-applicant-actions{display:flex;gap:9px;flex-wrap:wrap}
+.company-applicant-actions .button{display:inline-flex;align-items:center;gap:7px}
+.job-bookmark-button{display:inline-flex;align-items:center;gap:8px;margin:0 0 20px}
+.company-applications{width:100%}
+@media(max-width:640px){.company-applicant-heading{flex-direction:column}.company-applicant-actions .button{width:100%;justify-content:center}}
