@@ -83,6 +83,13 @@ function requireSupportRole(request, response, next) {
   return next()
 }
 
+function requireAdmin(request, response, next) {
+    if (request.auth.user.role !== 'admin') {
+        return response.status(403).json({ error: 'Chỉ quản trị viên mới dùng được chức năng này.' })
+    }
+    return next()
+}
+
 async function getUserByIdentifier(identifier) {
   const normalized = normalizeIdentifier(identifier)
   return normalized.includes('@')
@@ -91,12 +98,13 @@ async function getUserByIdentifier(identifier) {
 }
 
 app.get('/api/jobs', async (_request, response) => {
-  const jobs = await all(`
+    const jobs = await all(`
     SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo, created_at
     FROM jobs
+    WHERE status = 'approved'
     ORDER BY id
   `)
-  return response.json({ jobs })
+    return response.json({ jobs })
 })
 
 app.post('/api/auth/register', async (request, response) => {
@@ -591,6 +599,62 @@ app.put('/api/company', authenticateRequest, requireEmployer, async (request, re
   }, { immediate: true })
   return response.json({ message: 'Đã lưu thông tin doanh nghiệp.', company })
 })
+const jobStatuses = ['pending', 'approved', 'rejected', 'hidden', 'closed']
+const allowedJobTransitions = {
+    pending: ['approved', 'rejected'],
+    approved: ['hidden', 'closed'],
+    hidden: ['approved', 'closed'],
+    closed: ['approved'],
+    rejected: ['approved'],
+}
+app.get('/api/admin/jobs', authenticateRequest, requireAdmin, async (request, response) => {
+    const status = request.query.status
+    if (status !== undefined && (typeof status !== 'string' || !jobStatuses.includes(status))) {
+        return response.status(400).json({ error: 'Trạng thái lọc không hợp lệ.' })
+    }
+    const columns = 'id, title, company, location, type, category, status, review_note, reviewed_at, created_at'
+    const rows = status
+        ? await all(`SELECT ${columns} FROM jobs WHERE status = ? ORDER BY created_at DESC, id DESC`, [status])
+        : await all(`SELECT ${columns} FROM jobs ORDER BY created_at DESC, id DESC`)
+    return response.json({ jobs: rows, allowedTransitions: allowedJobTransitions })
+})
+app.patch('/api/admin/jobs/:id/status', authenticateRequest, requireAdmin, async (request, response) => {
+    const id = Number(request.params.id)
+    const { status, note } = request.body ?? {}
+    if (!Number.isSafeInteger(id) || id < 1) {
+        return response.status(400).json({ error: 'Mã tin tuyển dụng không hợp lệ.' })
+    }
+    if (!jobStatuses.includes(status)) {
+        return response.status(400).json({ error: 'Trạng thái không hợp lệ.' })
+    }
+    const reviewNote = typeof note === 'string' ? note.trim() : ''
+    if (reviewNote.length > 500) {
+        return response.status(400).json({ error: 'Ghi chú tối đa 500 ký tự.' })
+    }
+    if (status === 'rejected' && reviewNote.length < 5) {
+        return response.status(400).json({ error: 'Vui lòng nhập lý do từ chối (ít nhất 5 ký tự).' })
+    }
+    const job = await get('SELECT id, status FROM jobs WHERE id = ?', [id])
+    if (!job) return response.status(404).json({ error: 'Không tìm thấy tin tuyển dụng.' })
+    if (!(allowedJobTransitions[job.status] ?? []).includes(status)) {
+        return response.status(409).json({ error: `Không thể chuyển tin từ “${job.status}” sang “${status}”.` })
+    }
+    // AND status = ? : nếu admin khác vừa đổi trạng thái thì lệnh này không cập nhật dòng nào.
+    const result = await run(`
+    UPDATE jobs SET status = ?, review_note = ?, reviewed_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = ?
+  `, [status, reviewNote || null, id, job.status])
+    if (result.changes === 0) {
+        return response.status(409).json({ error: 'Tin vừa được người khác cập nhật. Vui lòng tải lại danh sách.' })
+    }
+    return response.json({ message: 'Đã cập nhật trạng thái tin tuyển dụng.' })
+})
+app.get('/api/admin/emails', authenticateRequest, requireAdmin, async (_request, response) => {
+    // Không dùng LIMIT/TOP vì SQLite và SQL Server viết khác nhau; bảng nhỏ nên cắt ở đây.
+    const emails = await all('SELECT id, to_email, subject, body, status, error, created_at FROM email_outbox ORDER BY id DESC')
+    return response.json({ emails: emails.slice(0, 50) })
+})
+
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))
 
 app.use((error, _request, response, _next) => {
@@ -675,9 +739,46 @@ async function initializeEmployerAccount() {
   `, [settings.name.trim(), email, phone, passwordHash])
   console.log(`Tài khoản nhà tuyển dụng đã được tạo: ${email}`)
 }
-
+async function initializeAdminAccount() {
+    const settings = {
+        name: process.env.ADMIN_NAME,
+        email: process.env.ADMIN_EMAIL,
+        phone: process.env.ADMIN_PHONE,
+        password: process.env.ADMIN_PASSWORD,
+    }
+    const configuredValues = Object.values(settings).filter(Boolean).length
+    if (configuredValues === 0) return
+    if (configuredValues !== Object.keys(settings).length) {
+        throw new Error('Cần cấu hình đầy đủ ADMIN_NAME, ADMIN_EMAIL, ADMIN_PHONE và ADMIN_PASSWORD để tạo tài khoản quản trị viên.')
+    }
+    if (settings.name.trim().length < 2 || settings.name.trim().length > 80
+        || !isEmail(settings.email.trim()) || !isPhoneInput(settings.phone)
+        || settings.password.length < 8 || Buffer.byteLength(settings.password, 'utf8') > 72) {
+        throw new Error('Thông tin ADMIN_* không hợp lệ; hãy kiểm tra tên, email, điện thoại và mật khẩu (8–72 byte).')
+    }
+    const email = settings.email.trim().toLowerCase()
+    const phone = normalizePhone(settings.phone)
+    const existingUsers = await all('SELECT id, email, phone, role FROM users WHERE email = ? OR phone = ?', [email, phone])
+    if (existingUsers.length > 0) {
+        const matchingAdmin = existingUsers.length === 1
+            && existingUsers[0].role === 'admin'
+            && existingUsers[0].email === email
+            && existingUsers[0].phone === phone
+        if (!matchingAdmin) {
+            throw new Error('ADMIN_EMAIL hoặc ADMIN_PHONE đã được dùng bởi tài khoản khác.')
+        }
+        return
+    }
+    const passwordHash = await bcrypt.hash(settings.password, bcryptRounds)
+    await run(`
+    INSERT INTO users (name, email, phone, password_hash, role)
+    VALUES (?, ?, ?, ?, 'admin')
+  `, [settings.name.trim(), email, phone, passwordHash])
+    console.log(`Tài khoản quản trị viên đã được tạo: ${email}`)
+}
 await initializeSupportAccount()
 await initializeEmployerAccount()
+await initializeAdminAccount()
 
 app.listen(port, () => {
   console.log(`StuWork API listening on http://localhost:${port}`)
