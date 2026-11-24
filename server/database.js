@@ -74,7 +74,26 @@ function initializeSqlite() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `)
-
+    for (const [column, definition] of [
+        ['status', `TEXT NOT NULL DEFAULT 'pending'`],
+        ['review_note', 'TEXT'],
+        ['reviewed_at', 'TEXT'],
+    ]) {
+        if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
+            sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
+        }
+    }
+    sqliteDatabase.exec(`
+    CREATE TABLE IF NOT EXISTS email_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      to_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'logged')),
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
   for (const [column, definition] of [
     ['university', 'TEXT'],
     ['major', 'TEXT'],
@@ -209,6 +228,20 @@ export async function ensureSqlServerSchema(pool) {
        tone NVARCHAR(50) NOT NULL CONSTRAINT DF_jobs_tone DEFAULT 'momo',
        logo NVARCHAR(50) NOT NULL CONSTRAINT DF_jobs_logo DEFAULT '',
        created_at DATETIME2 NOT NULL CONSTRAINT DF_jobs_created_at DEFAULT SYSUTCDATETIME()
+     )`, [
+          ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
+          ['review_note', 'NVARCHAR(500) NULL'],
+          ['reviewed_at', 'DATETIME2 NULL'],
+      ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
+      `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
+     CREATE TABLE dbo.email_outbox (
+       id INT IDENTITY(1,1) PRIMARY KEY,
+       to_email NVARCHAR(254) NOT NULL,
+       subject NVARCHAR(200) NOT NULL,
+       body NVARCHAR(MAX) NOT NULL,
+       status NVARCHAR(20) NOT NULL,
+       error NVARCHAR(500) NULL,
+       created_at DATETIME2 NOT NULL CONSTRAINT DF_email_outbox_created_at DEFAULT SYSUTCDATETIME()
      )`,
     `IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
      CREATE TABLE dbo.applications (
