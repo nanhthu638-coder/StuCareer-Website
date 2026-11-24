@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, Building2 } from 'lucide-react'
-import { apiRequest } from './api.js'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, Building2, Download, UsersRound, Check, X } from 'lucide-react'
+import { apiRequest, downloadApiFile } from './api.js'
 
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
 const sizeOptions = ['Dưới 50 nhân viên', '50 – 200 nhân viên', '200 – 1000 nhân viên', 'Trên 1000 nhân viên']
@@ -11,6 +11,11 @@ function CompanyProfile({ token, onBack }) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const [applications, setApplications] = useState([])
+    const [applicationError, setApplicationError] = useState('')
+    const [applicationLoading, setApplicationLoading] = useState(false)
+    const [busyApplicationId, setBusyApplicationId] = useState(null)
+    const [activeTab, setActiveTab] = useState('company')
 
     // Tải thông tin doanh nghiệp một lần khi mở trang
     useEffect(() => {
@@ -29,6 +34,46 @@ function CompanyProfile({ token, onBack }) {
             cancelled = true
         }
     }, [token])
+
+    const loadApplications = async () => {
+        setApplicationLoading(true)
+        setApplicationError('')
+        try {
+            const result = await apiRequest('employer/applications', { token })
+            setApplications(result.applications || [])
+        } catch (loadError) {
+            setApplicationError(loadError.message || 'Không thể tải danh sách ứng viên.')
+        } finally {
+            setApplicationLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (activeTab === 'applications') loadApplications()
+    }, [activeTab, token])
+
+    const decideApplication = async (application, decisionStatus) => {
+        setBusyApplicationId(application.id)
+        setApplicationError('')
+        try {
+            await apiRequest(`employer/applications/${application.id}/decision`, {
+                method: 'PATCH', token, body: { decisionStatus },
+            })
+            await loadApplications()
+        } catch (updateError) {
+            setApplicationError(updateError.message || 'Không thể cập nhật kết quả.')
+        } finally {
+            setBusyApplicationId(null)
+        }
+    }
+
+    const downloadCv = async (application) => {
+        try {
+            await downloadApiFile(`/api/employer/applications/${application.id}/cv`, token, application.cvName)
+        } catch (downloadError) {
+            setApplicationError(downloadError.message || 'Không thể tải CV.')
+        }
+    }
 
     // Mỗi ô nhập có thuộc tính name trùng tên trường trong company
     const handleChange = (event) => {
@@ -64,6 +109,46 @@ function CompanyProfile({ token, onBack }) {
                     <ArrowLeft size={16} /> Về trang chủ
                 </button>
 
+                <div className="company-tabs" role="tablist" aria-label="Quản lý doanh nghiệp">
+                    <button type="button" className={`company-tab${activeTab === 'company' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('company')}><Building2 size={16} /> Thông tin doanh nghiệp</button>
+                    <button type="button" className={`company-tab${activeTab === 'applications' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('applications')}><UsersRound size={16} /> Danh sách ứng viên</button>
+                </div>
+                {activeTab === 'applications' ? (
+                    <section className="company-card company-applications">
+                        <div className="company-card-heading">
+                            <span className="company-card-icon"><UsersRound size={20} /></span>
+                            <div><h1>Danh sách ứng viên</h1><p>Xem hồ sơ, tải CV và cập nhật kết quả tuyển dụng.</p></div>
+                        </div>
+                        {applicationError && <div className="form-api-error" role="alert">{applicationError}</div>}
+                        {applicationLoading ? <p>Đang tải danh sách ứng viên...</p> : applications.length === 0 ? (
+                            <div className="support-empty">Chưa có ứng viên cho doanh nghiệp này. Hãy kiểm tra tên doanh nghiệp trong hồ sơ có trùng với tên công ty của tin tuyển dụng.</div>
+                        ) : (
+                            <div className="company-applicant-list">
+                                {applications.map((applicant) => (
+                                    <article className="company-applicant-card" key={applicant.id}>
+                                        <div className="company-applicant-heading">
+                                            <div><h2>{applicant.name}</h2><p>{applicant.title} · {applicant.company}</p></div>
+                                            <span className={`support-status-badge ${applicant.decisionStatus === 'accepted' ? 'admin-status-approved' : applicant.decisionStatus === 'rejected' ? 'admin-status-rejected' : 'admin-status-pending'}`}>
+                                                {applicant.decisionStatus === 'accepted' ? 'Trúng tuyển' : applicant.decisionStatus === 'rejected' ? 'Từ chối' : 'Chờ xử lý'}
+                                            </span>
+                                        </div>
+                                        <div className="company-applicant-details">
+                                            <p><b>Email:</b> {applicant.email}</p><p><b>Điện thoại:</b> {applicant.phone}</p>
+                                            <p><b>Trường/ngành:</b> {[applicant.university, applicant.major].filter(Boolean).join(' · ') || 'Chưa cập nhật'}</p>
+                                            {applicant.skills && <p><b>Kỹ năng:</b> {applicant.skills}</p>}
+                                            {applicant.coverLetter && <p><b>Thư giới thiệu:</b> {applicant.coverLetter}</p>}
+                                        </div>
+                                        <div className="company-applicant-actions">
+                                            <button className="button button-outline" type="button" onClick={() => downloadCv(applicant)}><Download size={15} /> Tải CV ({applicant.cvName})</button>
+                                            <button className="button button-primary" type="button" disabled={busyApplicationId === applicant.id || applicant.decisionStatus === 'accepted'} onClick={() => decideApplication(applicant, 'accepted')}><Check size={15} /> Trúng tuyển</button>
+                                            <button className="button button-outline" type="button" disabled={busyApplicationId === applicant.id || applicant.decisionStatus === 'rejected'} onClick={() => decideApplication(applicant, 'rejected')}><X size={15} /> Từ chối</button>
+                                        </div>
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                ) : (
                 <div className="company-card">
                     <div className="company-card-heading">
                         <span className="company-card-icon"><Building2 size={20} /></span>
@@ -124,6 +209,7 @@ function CompanyProfile({ token, onBack }) {
                         </form>
                     )}
                 </div>
+                )}
             </div>
         </main>
     )

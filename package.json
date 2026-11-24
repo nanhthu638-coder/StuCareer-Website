@@ -4,12 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"node --env-file=.env server/index.js\"",
+    "dev": "concurrently -k \"vite\" \"node --env-file-if-exists=.env server/index.js\"",
     "dev:web": "vite",
-    "dev:api": "node --env-file=.env server/index.js",
+    "dev:api": "node --env-file-if-exists=.env server/index.js",
     "db:migrate:sqlserver": "node --env-file=.env server/migrate-sqlite-to-sqlserver.js",
     "build": "vite build",
     "lint": "oxlint",
+    "db:seed:sprint3": "node --env-file=.env server/seed-sprint3.js",
+    "db:seed:demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.demo server/seed-demo-data.js",
+    "demo:result-email": "node --env-file=.env server/demo-result-email.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,6 +23,7 @@
     "framer-motion": "^14.6.0",
     "lucide-react": "^1.61.0",
     "mssql": "^11.0.2",
+    "nodemailer": "^10.6.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-hook-form": "^7.91.0",
@@ -35,5 +39,8 @@
     "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.4"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true
   }
 }

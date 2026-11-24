@@ -71,10 +71,39 @@ function initializeSqlite() {
       category TEXT NOT NULL,
       tone TEXT NOT NULL DEFAULT 'momo',
       logo TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        requirements TEXT NOT NULL DEFAULT '[]',
+        benefits TEXT NOT NULL DEFAULT '[]',
+        slots INTEGER NOT NULL DEFAULT 1,
+        deadline TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `)
-
+    for (const [column, definition] of [
+        ['status', `TEXT NOT NULL DEFAULT 'pending'`],
+        ['review_note', 'TEXT'],
+        ['reviewed_at', 'TEXT'],
+          ['description', `TEXT NOT NULL DEFAULT ''`],
+          ['requirements', `TEXT NOT NULL DEFAULT '[]'`],
+          ['benefits', `TEXT NOT NULL DEFAULT '[]'`],
+          ['slots', 'INTEGER NOT NULL DEFAULT 1'],
+          ['deadline', 'TEXT'],
+    ]) {
+        if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
+            sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
+        }
+    }
+    sqliteDatabase.exec(`
+    CREATE TABLE IF NOT EXISTS email_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      to_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'logged')),
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
   for (const [column, definition] of [
     ['university', 'TEXT'],
     ['major', 'TEXT'],
@@ -98,6 +127,18 @@ function initializeSqlite() {
       cv_path TEXT NOT NULL,
       cv_original_name TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'withdrawn')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (user_id, job_id)
+    )
+  `)
+  if (!sqliteDatabase.pragma('table_info(applications)').some((item) => item.name === 'decision_status')) {
+    sqliteDatabase.exec("ALTER TABLE applications ADD COLUMN decision_status TEXT NOT NULL DEFAULT 'pending'")
+  }
+  sqliteDatabase.exec(`
+    CREATE TABLE IF NOT EXISTS bookmarks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      job_id INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (user_id, job_id)
     )
@@ -208,7 +249,31 @@ export async function ensureSqlServerSchema(pool) {
        category NVARCHAR(100) NOT NULL,
        tone NVARCHAR(50) NOT NULL CONSTRAINT DF_jobs_tone DEFAULT 'momo',
        logo NVARCHAR(50) NOT NULL CONSTRAINT DF_jobs_logo DEFAULT '',
+       description NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description DEFAULT '',
+       requirements NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements DEFAULT '[]',
+       benefits NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits DEFAULT '[]',
+       slots INT NOT NULL CONSTRAINT DF_jobs_slots DEFAULT 1,
+       deadline NVARCHAR(20) NULL,
        created_at DATETIME2 NOT NULL CONSTRAINT DF_jobs_created_at DEFAULT SYSUTCDATETIME()
+     )`, [
+          ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
+          ['review_note', 'NVARCHAR(500) NULL'],
+          ['reviewed_at', 'DATETIME2 NULL'],
+          ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
+          ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
+          ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
+          ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
+          ['deadline', 'NVARCHAR(20) NULL'],
+      ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
+      `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
+     CREATE TABLE dbo.email_outbox (
+       id INT IDENTITY(1,1) PRIMARY KEY,
+       to_email NVARCHAR(254) NOT NULL,
+       subject NVARCHAR(200) NOT NULL,
+       body NVARCHAR(MAX) NOT NULL,
+       status NVARCHAR(20) NOT NULL,
+       error NVARCHAR(500) NULL,
+       created_at DATETIME2 NOT NULL CONSTRAINT DF_email_outbox_created_at DEFAULT SYSUTCDATETIME()
      )`,
     `IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
      CREATE TABLE dbo.applications (
@@ -222,6 +287,17 @@ export async function ensureSqlServerSchema(pool) {
        created_at DATETIME2 NOT NULL CONSTRAINT DF_applications_created_at DEFAULT SYSUTCDATETIME(),
        CONSTRAINT UQ_applications_user_job UNIQUE (user_id, job_id),
        CONSTRAINT FK_applications_users FOREIGN KEY (user_id) REFERENCES dbo.users(id)
+     )`,
+    `IF COL_LENGTH(N'dbo.applications', N'decision_status') IS NULL
+       ALTER TABLE dbo.applications ADD decision_status NVARCHAR(20) NOT NULL CONSTRAINT DF_applications_decision_status DEFAULT 'pending'`,
+    `IF OBJECT_ID(N'dbo.bookmarks', N'U') IS NULL
+     CREATE TABLE dbo.bookmarks (
+       id INT IDENTITY(1,1) PRIMARY KEY,
+       user_id INT NOT NULL,
+       job_id INT NOT NULL,
+       created_at DATETIME2 NOT NULL CONSTRAINT DF_bookmarks_created_at DEFAULT SYSUTCDATETIME(),
+       CONSTRAINT UQ_bookmarks_user_job UNIQUE (user_id, job_id),
+       CONSTRAINT FK_bookmarks_users FOREIGN KEY (user_id) REFERENCES dbo.users(id)
      )`,
     `IF OBJECT_ID(N'dbo.companies', N'U') IS NULL
      CREATE TABLE dbo.companies (

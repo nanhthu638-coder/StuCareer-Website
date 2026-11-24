@@ -19,78 +19,47 @@ import {
 } from 'lucide-react'
 import JobHero from './JobHero.jsx'
 import { requestApiJson } from './api.js'
-import { jobs } from './jobsData.js'
+import { toJobViewModel } from './jobViewModel.js'
 
 const categories = [
-  { name: 'Công nghệ thông tin', count: '1.240 việc làm', icon: Code2, tone: 'mint' },
-  { name: 'Marketing', count: '864 việc làm', icon: Megaphone, tone: 'peach' },
-  { name: 'Tài chính — Kế toán', count: '532 việc làm', icon: CircleDollarSign, tone: 'blue' },
-  { name: 'Thiết kế sáng tạo', count: '416 việc làm', icon: PenTool, tone: 'lilac' },
-  { name: 'Kinh doanh', count: '728 việc làm', icon: ChartNoAxesColumnIncreasing, tone: 'yellow' },
-  { name: 'Nhân sự', count: '305 việc làm', icon: UsersRound, tone: 'pink' },
-  { name: 'Chăm sóc khách hàng', count: '289 việc làm', icon: Headset, tone: 'aqua' },
-  { name: 'Giáo dục', count: '194 việc làm', icon: GraduationCap, tone: 'lavender' },
+  { name: 'Công nghệ thông tin', icon: Code2, tone: 'mint' },
+  { name: 'Marketing', icon: Megaphone, tone: 'peach' },
+  { name: 'Tài chính — Kế toán', icon: CircleDollarSign, tone: 'blue' },
+  { name: 'Thiết kế sáng tạo', icon: PenTool, tone: 'lilac' },
+  { name: 'Kinh doanh', icon: ChartNoAxesColumnIncreasing, tone: 'yellow' },
+  { name: 'Nhân sự', icon: UsersRound, tone: 'pink' },
+  { name: 'Chăm sóc khách hàng', icon: Headset, tone: 'aqua' },
+  { name: 'Giáo dục', icon: GraduationCap, tone: 'lavender' },
 ]
 
 function normalizeSearchText(value) {
   return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi')
 }
 
-function getJobIdentity(job) {
-  return [job.title, job.company, job.location].map(normalizeSearchText).join('|')
-}
-
-function toListingJob(job) {
-  const salaryMin = job.salary_min === null ? null : Number(job.salary_min)
-  const salaryMax = job.salary_max === null ? null : Number(job.salary_max)
-
-  return {
-    id: `db-${job.id}`,
-    title: job.title,
-    company: job.company,
-    location: job.location,
-    salaryMin: salaryMin ?? 0,
-    salaryMax: salaryMax ?? 0,
-    salary: salaryMin === null || salaryMax === null
-      ? 'Thỏa thuận'
-      : `${salaryMin} – ${salaryMax} triệu / tháng`,
-    type: job.type,
-    category: job.category,
-    tone: job.tone,
-    logo: job.logo,
-    posted: job.created_at ? `Đăng ngày ${new Date(`${job.created_at.replace(' ', 'T')}Z`).toLocaleDateString('vi-VN')}` : 'Mới đăng',
-    slots: null,
-    deadline: null,
-    description: '',
-    requirements: [],
-    benefits: [],
-  }
-}
-
 function HomePage({ onViewJob }) {
   const [filters, setFilters] = useState({ keyword: '', category: '', location: '', minimumSalary: 0 })
   const [databaseJobs, setDatabaseJobs] = useState([])
   const [jobsLoadError, setJobsLoadError] = useState('')
+  const [jobsLoading, setJobsLoading] = useState(true)
 
   useEffect(() => {
     let ignore = false
     requestApiJson('/api/jobs')
       .then((result) => {
         if (!Array.isArray(result.jobs)) throw new Error('Dữ liệu việc làm từ máy chủ không hợp lệ.')
-        if (!ignore) setDatabaseJobs(result.jobs.map(toListingJob))
+        if (!ignore) setDatabaseJobs(result.jobs.map(toJobViewModel))
       })
       .catch((error) => {
         if (!ignore) setJobsLoadError(error.message || 'Không thể tải thêm việc làm từ máy chủ.')
+      })
+      .finally(() => {
+        if (!ignore) setJobsLoading(false)
       })
 
     return () => { ignore = true }
   }, [])
 
-  const catalogIdentities = new Set(jobs.map(getJobIdentity))
-  const availableJobs = [
-    ...jobs,
-    ...databaseJobs.filter((job) => !catalogIdentities.has(getJobIdentity(job))),
-  ]
+  const availableJobs = databaseJobs
   const keyword = normalizeSearchText(filters.keyword.trim())
   const filteredJobs = availableJobs.filter((job) => {
     const searchableText = normalizeSearchText(`${job.title} ${job.company} ${job.category} ${job.type}`)
@@ -119,14 +88,17 @@ function HomePage({ onViewJob }) {
             <span className="text-link">Khám phá tất cả <ArrowRight size={16} /></span>
           </div>
           <div className="category-grid">
-            {categories.map(({ name, count, icon: Icon, tone }) => (
-              <button className="category-card" key={name} type="button">
-                <span className={`category-icon category-${tone}`}><Icon size={22} strokeWidth={1.9} /></span>
-                <span className="category-title">{name}</span>
-                <span className="category-count">{count}</span>
-                <ArrowUpRight className="category-arrow" size={17} />
-              </button>
-            ))}
+            {categories.map(({ name, icon: Icon, tone }) => {
+              const count = availableJobs.filter((job) => normalizeSearchText(job.category) === normalizeSearchText(name)).length
+              return (
+                <button className="category-card" key={name} type="button">
+                  <span className={`category-icon category-${tone}`}><Icon size={22} strokeWidth={1.9} /></span>
+                  <span className="category-title">{name}</span>
+                  <span className="category-count">{count} việc làm</span>
+                  <ArrowUpRight className="category-arrow" size={17} />
+                </button>
+              )
+            })}
           </div>
         </div>
       </section>
@@ -186,8 +158,9 @@ function HomePage({ onViewJob }) {
                 </article>
             ))}
           </div>
-          {jobsLoadError && <p className="field-error" role="status">{jobsLoadError} Đang hiển thị danh sách việc làm có sẵn.</p>}
-          {filteredJobs.length === 0 && (
+          {jobsLoadError && <p className="field-error" role="alert">{jobsLoadError}</p>}
+          {jobsLoading && <p role="status">Đang tải việc làm...</p>}
+          {!jobsLoading && !jobsLoadError && filteredJobs.length === 0 && (
             <div className="empty-jobs">
               <strong>Không tìm thấy việc làm phù hợp</strong>
               <p>Hãy thử thay đổi từ khóa hoặc tiêu chí tìm kiếm.</p>
