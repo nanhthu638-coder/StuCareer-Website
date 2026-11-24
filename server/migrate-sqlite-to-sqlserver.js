@@ -22,7 +22,7 @@ const tables = [
   },
   {
     name: 'jobs',
-    columns: ['id', 'title', 'company', 'location', 'salary_min', 'salary_max', 'type', 'category', 'tone', 'logo', 'created_at'],
+      columns: ['id', 'title', 'company', 'location', 'salary_min', 'salary_max', 'type', 'category', 'tone', 'logo', 'created_at', 'status', 'review_note', 'reviewed_at'],
   },
   {
     name: 'companies',

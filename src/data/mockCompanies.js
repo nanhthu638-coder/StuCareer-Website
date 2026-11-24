@@ -1,92 +1,60 @@
-export const mockCompanies = [
-  {
-    id: 'fpt-software',
-    name: 'FPT Software',
-    logo: 'https://placehold.co/120x120/ebf5ff/1769aa?text=FPT',
-    cover: 'https://placehold.co/1440x380/124e66/ffffff?text=FPT+Software',
-    industry: 'Công nghệ thông tin',
-    location: 'Hà Nội, Việt Nam',
-    isVerified: true,
-    size: '30.000+ nhân viên',
-    email: 'careers@fpt.com',
-    phone: '024 7300 7300',
-    website: 'https://fptsoftware.com',
-    postedAt: '15 phút trước',
-    description: 'FPT Software phát triển các giải pháp công nghệ và dịch vụ chuyển đổi số cho khách hàng trên toàn cầu. Sinh viên có cơ hội tham gia dự án thực tế, học hỏi cùng các kỹ sư giàu kinh nghiệm và phát triển năng lực chuyên môn.',
-    jobs: [
-      {
-        id: 'fpt-backend-intern',
-        appJobId: 4,
-        title: 'Backend Developer Intern (Node.js)',
-        salary: '5 – 8 triệu / tháng',
-        location: 'Hà Nội',
-        major: 'Công nghệ thông tin',
-        skills: ['JavaScript', 'Node.js', 'SQL', 'REST API'],
-      },
-      {
-        id: 'fpt-business-analyst',
-        appJobId: 9,
-        title: 'Business Analyst',
-        salary: '10 – 15 triệu / tháng',
-        location: 'Đà Nẵng',
-        major: 'Hệ thống thông tin',
-        skills: ['Excel', 'Phân tích dữ liệu', 'Giao tiếp'],
-      },
-    ],
-  },
-  {
-    id: 'shopee',
-    name: 'Shopee',
-    logo: 'https://placehold.co/120x120/fff1e8/ee4d2d?text=S',
-    cover: 'https://placehold.co/1440x380/ee4d2d/ffffff?text=Shopee',
-    industry: 'Thương mại điện tử',
-    location: 'TP. Hồ Chí Minh, Việt Nam',
-    isVerified: true,
-    size: '1.000+ nhân viên',
-    email: 'vn-careers@shopee.com',
-    phone: '028 7300 1221',
-    website: 'https://careers.shopee.vn',
-    postedAt: 'Vừa xong',
-    description: 'Shopee là nền tảng thương mại điện tử kết nối người mua và người bán trong khu vực. Đội ngũ hướng tới trải nghiệm mua sắm thuận tiện, đồng thời tạo môi trường làm việc nhanh, nhiều cơ hội học hỏi cho người trẻ.',
-    jobs: [
-      {
-        id: 'shopee-marketing',
-        appJobId: 2,
-        title: 'Marketing Executive',
-        salary: '8 – 12 triệu / tháng',
-        location: 'TP. Hồ Chí Minh',
-        major: 'Marketing',
-        skills: ['Marketing nội dung', 'Phân tích dữ liệu', 'Giao tiếp'],
-      },
-    ],
-  },
-  {
-    id: 'vng',
-    name: 'VNG',
-    logo: 'https://placehold.co/120x120/eaf8f5/168a72?text=VNG',
-    cover: 'https://placehold.co/1440x380/176d68/ffffff?text=VNG',
-    industry: 'Công nghệ & Giải trí',
-    location: 'TP. Hồ Chí Minh, Việt Nam',
-    isVerified: false,
-    size: '3.000+ nhân viên',
-    email: 'talent@vng.com.vn',
-    phone: '028 3962 3888',
-    website: 'https://www.vng.com.vn',
-    postedAt: '1 giờ trước',
-    description: 'VNG xây dựng các sản phẩm công nghệ phục vụ đời sống số, giải trí và kết nối cộng đồng. Sinh viên có thể làm việc với các nhóm sản phẩm đa lĩnh vực và được khuyến khích thử nghiệm ý tưởng mới.',
-    jobs: [
-      {
-        id: 'vng-business-analyst-intern',
-        appJobId: 3,
-        title: 'Business Analyst Intern',
-        salary: '5 – 7 triệu / tháng',
-        location: 'TP. Hồ Chí Minh',
-        major: 'Hệ thống thông tin',
-        skills: ['Excel', 'SQL', 'Phân tích dữ liệu', 'Giao tiếp'],
-      },
-    ],
-  },
-]
+import { jobs } from '../jobsData.js'
+
+const companyDetails = {
+  Momo: { industry: 'Công nghệ tài chính', tone: '#a855f7' },
+  Shopee: { industry: 'Thương mại điện tử', tone: '#f97316' },
+  'VNG Corporation': { industry: 'Công nghệ thông tin', tone: '#2563eb' },
+  'FPT Software': { industry: 'Công nghệ thông tin', tone: '#ea580c' },
+  Tiki: { industry: 'Thương mại điện tử', tone: '#0284c7' },
+  'StuTech Solutions': { industry: 'Công nghệ thông tin', tone: '#0f766e' },
+  'Sao Mai Studio': { industry: 'Thiết kế sáng tạo', tone: '#7c3aed' },
+  'Cà Phê Việt': { industry: 'Thực phẩm và đồ uống', tone: '#15803d' },
+}
+
+function toSlug(value) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function createLogo(name, color) {
+  const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="${color}"/><text x="48" y="58" fill="white" font-family="Arial,sans-serif" font-size="32" font-weight="700" text-anchor="middle">${initials}</text></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
+export const mockCompanies = Object.values(
+  jobs.reduce((companies, job) => {
+    const company = companies[job.company] ?? {
+      id: toSlug(job.company),
+      name: job.company,
+      industry: companyDetails[job.company]?.industry ?? job.category,
+      location: job.location,
+      description: `Các vị trí tuyển dụng hiện có tại ${job.company}.`,
+      size: 'Chưa cập nhật',
+      email: '',
+      phone: '',
+      website: '',
+      logo: createLogo(job.company, companyDetails[job.company]?.tone ?? '#64748b'),
+      cover: '',
+      isVerified: false,
+      postedAt: 'Đang tuyển',
+      jobs: [],
+    }
+
+    company.jobs.push({
+      ...job,
+      major: job.category,
+      skills: job.requirements,
+      appJobId: job.id,
+    })
+    companies[job.company] = company
+    return companies
+  }, {}),
+)
 
 export function getCompanyById(id) {
   return mockCompanies.find((company) => company.id === id)

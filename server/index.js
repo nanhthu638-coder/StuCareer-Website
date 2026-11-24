@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import express from 'express'
-import { jobs } from '../src/jobsData.js'
 import { all, get, initializeDatabase, run, withTransaction } from './database.js'
+import { seedJobCatalog } from './seed-job-catalog.js'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 const databasePath = process.env.DATABASE_PATH
@@ -16,6 +16,8 @@ mkdirSync(dirname(databasePath), { recursive: true })
 const cvDirectory = resolve(dirname(databasePath), 'cvs')
 mkdirSync(cvDirectory, { recursive: true })
 await initializeDatabase()
+const seededJobCount = await seedJobCatalog()
+if (seededJobCount > 0) console.log(`Đã thêm ${seededJobCount} tin tuyển dụng mẫu vào cơ sở dữ liệu.`)
 
 const app = express()
 const otpByIdentifier = new Map()
@@ -83,6 +85,13 @@ function requireSupportRole(request, response, next) {
   return next()
 }
 
+function requireAdmin(request, response, next) {
+    if (request.auth.user.role !== 'admin') {
+        return response.status(403).json({ error: 'Chỉ quản trị viên mới dùng được chức năng này.' })
+    }
+    return next()
+}
+
 async function getUserByIdentifier(identifier) {
   const normalized = normalizeIdentifier(identifier)
   return normalized.includes('@')
@@ -92,8 +101,10 @@ async function getUserByIdentifier(identifier) {
 
 app.get('/api/jobs', async (_request, response) => {
   const jobs = await all(`
-    SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo, created_at
+    SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo,
+           description, requirements, benefits, slots, deadline, created_at
     FROM jobs
+    WHERE status = 'approved'
     ORDER BY id
   `)
   return response.json({ jobs })
@@ -293,30 +304,39 @@ function requireEmployer(request, response, next) {
 }
 
 function parseDeadline(value) {
+  if (!value) return null
   const [day, month, year] = value.split('/').map(Number)
+  if (![day, month, year].every(Number.isFinite)) return null
   return new Date(year, month - 1, day, 23, 59, 59)
 }
 
 async function getJobAvailability(jobId, userId) {
-  const job = jobs.find((item) => item.id === jobId)
-  if (!job) return null
-  const { applied } = await get(
-    "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted'",
+  const job = await get(
+    "SELECT id, slots, deadline FROM jobs WHERE id = ? AND status = 'approved'",
     [jobId],
   )
-  const expired = parseDeadline(job.deadline).getTime() < Date.now()
+  if (!job) return null
+  const { applied } = await get(
+    "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted' AND decision_status IN ('pending', 'accepted')",
+    [jobId],
+  )
+  const deadline = parseDeadline(job.deadline)
+  const expired = Boolean(deadline && deadline.getTime() < Date.now())
   const mine = userId
-    ? await get('SELECT id, status, created_at FROM applications WHERE job_id = ? AND user_id = ?', [jobId, userId])
+    ? await get('SELECT id, status, created_at, decision_status FROM applications WHERE job_id = ? AND user_id = ?', [jobId, userId])
     : null
   const user = userId ? await get('SELECT cv_path FROM users WHERE id = ?', [userId]) : null
+  const slots = Number(job.slots)
   return {
     jobId,
-    slots: job.slots,
+    slots,
     applied,
-    remaining: Math.max(job.slots - applied, 0),
+    remaining: Math.max(slots - applied, 0),
     expired,
     hasCv: Boolean(user?.cv_path),
-    application: mine?.status === 'submitted' ? { id: mine.id, createdAt: mine.created_at } : null,
+    application: mine?.status === 'submitted'
+      ? { id: mine.id, createdAt: mine.created_at, decisionStatus: mine.decision_status || 'pending' }
+      : null,
   }
 }
 
@@ -463,34 +483,62 @@ function optionalAuthentication(request, _response, next) {
 }
 
 app.get('/api/jobs/availability', optionalAuthentication, async (request, response) => {
+  const jobs = await all("SELECT id FROM jobs WHERE status = 'approved'")
   const items = await Promise.all(jobs.map((job) => getJobAvailability(job.id, request.auth?.user.id)))
   return response.json({ jobs: items })
 })
 
 app.get('/api/jobs/:id/availability', optionalAuthentication, async (request, response) => {
-  const availability = await getJobAvailability(Number(request.params.id), request.auth?.user.id)
+  const jobId = Number(request.params.id)
+  if (!Number.isSafeInteger(jobId) || jobId < 1) {
+    return response.status(400).json({ error: 'Mã công việc không hợp lệ.' })
+  }
+  const availability = await getJobAvailability(jobId, request.auth?.user.id)
   if (!availability) return response.status(404).json({ error: 'Không tìm thấy công việc này.' })
   return response.json(availability)
 })
 
+app.get('/api/jobs/:id', async (request, response) => {
+  const jobId = Number(request.params.id)
+  if (!Number.isSafeInteger(jobId) || jobId < 1) {
+    return response.status(400).json({ error: 'Mã công việc không hợp lệ.' })
+  }
+  const job = await get(`
+    SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo,
+           description, requirements, benefits, slots, deadline, created_at
+    FROM jobs
+    WHERE id = ? AND status = 'approved'
+  `, [jobId])
+  if (!job) return response.status(404).json({ error: 'Không tìm thấy công việc này.' })
+  return response.json({ job })
+})
+
 app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, async (request, response) => {
   const jobId = Number(request.params.id)
-  const job = jobs.find((item) => item.id === jobId)
-  if (!job) return response.status(404).json({ error: 'Không tìm thấy công việc này.' })
+  if (!Number.isSafeInteger(jobId) || jobId < 1) {
+    return response.status(400).json({ error: 'Mã công việc không hợp lệ.' })
+  }
   const coverLetter = optionalText(request.body?.coverLetter, 2000)
   if (coverLetter.error) return response.status(400).json({ error: 'Thư giới thiệu tối đa 2000 ký tự.' })
 
   // Kiểm tra slot và ghi đơn trong cùng một transaction để hai người không giành nhau slot cuối.
   const result = await withTransaction(async (transaction) => {
+    const job = await get(
+      "SELECT id, slots, deadline FROM jobs WHERE id = ? AND status = 'approved'",
+      [jobId],
+      transaction,
+    )
+    if (!job) return { status: 404, error: 'Không tìm thấy công việc này.' }
     const user = await get('SELECT cv_path, cv_original_name FROM users WHERE id = ?', [request.auth.user.id], transaction)
     if (!user?.cv_path) return { status: 400, error: 'Bạn cần tải CV lên hồ sơ trước khi ứng tuyển.' }
-    if (parseDeadline(job.deadline).getTime() < Date.now()) {
+    const deadline = parseDeadline(job.deadline)
+    if (deadline && deadline.getTime() < Date.now()) {
       return { status: 410, error: 'Tin tuyển dụng này đã hết hạn nộp hồ sơ.' }
     }
     const existing = await get('SELECT id, status FROM applications WHERE user_id = ? AND job_id = ?', [request.auth.user.id, jobId], transaction)
     if (existing?.status === 'submitted') return { status: 409, error: 'Bạn đã ứng tuyển công việc này rồi.' }
     const { applied } = await get(
-      "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted'",
+      "SELECT COUNT(*) AS applied FROM applications WHERE job_id = ? AND status = 'submitted' AND decision_status IN ('pending', 'accepted')",
       [jobId],
       transaction,
     )
@@ -518,15 +566,21 @@ app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, async (reque
 
 app.get('/api/applications', authenticateRequest, requireSeeker, async (request, response) => {
   const rows = await all(`
-    SELECT id, job_id, status, created_at, cv_original_name
-    FROM applications WHERE user_id = ? AND status = 'submitted' ORDER BY created_at DESC
+    SELECT a.id, a.job_id, a.status, a.decision_status, a.created_at, a.cv_original_name, j.title, j.company
+    FROM applications a
+    JOIN jobs j ON j.id = a.job_id
+    WHERE a.user_id = ? AND a.status = 'submitted'
+    ORDER BY a.created_at DESC
   `, [request.auth.user.id])
-  const applications = rows.flatMap((row) => {
-    const job = jobs.find((item) => item.id === row.job_id)
-    return job
-      ? [{ id: row.id, jobId: job.id, title: job.title, company: job.company, cv: row.cv_original_name, createdAt: row.created_at }]
-      : []
-  })
+  const applications = rows.map((row) => ({
+    id: row.id,
+    jobId: row.job_id,
+    title: row.title,
+    company: row.company,
+    decisionStatus: row.decision_status || 'pending',
+    cv: row.cv_original_name,
+    createdAt: row.created_at,
+  }))
   return response.json({ applications })
 })
 
@@ -538,6 +592,127 @@ app.delete('/api/applications/:id', authenticateRequest, requireSeeker, async (r
   `, [id, request.auth.user.id])
   if (result.changes === 0) return response.status(404).json({ error: 'Không tìm thấy đơn ứng tuyển.' })
   return response.json({ message: 'Đã rút đơn ứng tuyển. Slot đã được trả lại.' })
+})
+
+
+// Nhà tuyển dụng chỉ xem và xử lý hồ sơ thuộc doanh nghiệp đã khai báo trong tài khoản.
+async function getEmployerJob(jobId, userId, transaction) {
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [userId], transaction)
+  if (!company?.name) return null
+  const job = await get(
+    'SELECT id, title, company, slots FROM jobs WHERE id = ?',
+    [jobId],
+    transaction,
+  )
+  return job?.company.trim().toLocaleLowerCase('vi') === company.name.trim().toLocaleLowerCase('vi')
+    ? job
+    : null
+}
+
+app.get('/api/employer/applications', authenticateRequest, requireEmployer, async (request, response) => {
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [request.auth.user.id])
+  if (!company?.name) return response.json({ applications: [], companyName: '' })
+  const rows = await all(`
+    SELECT a.id, a.job_id, a.cover_letter, a.cv_original_name, a.created_at, a.decision_status,
+           u.name, u.email, u.phone, u.university, u.major, u.graduation_year, u.skills, u.bio,
+           j.title, j.company
+    FROM applications a
+    JOIN users u ON u.id = a.user_id
+    JOIN jobs j ON j.id = a.job_id
+    WHERE a.status = 'submitted'
+    ORDER BY a.created_at DESC
+  `)
+  const applications = rows
+    .filter((row) => row.company.trim().toLocaleLowerCase('vi') === company.name.trim().toLocaleLowerCase('vi'))
+    .map((row) => ({
+      id: row.id, jobId: row.job_id, title: row.title, company: row.company,
+      name: row.name, email: row.email, phone: row.phone, university: row.university || '',
+      major: row.major || '', graduationYear: row.graduation_year || '',
+      skills: row.skills || '', bio: row.bio || '', coverLetter: row.cover_letter || '',
+      cvName: row.cv_original_name, createdAt: row.created_at,
+      decisionStatus: row.decision_status || 'pending',
+    }))
+  return response.json({ applications, companyName: company.name })
+})
+
+app.patch('/api/employer/applications/:id/decision', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  const { decisionStatus } = request.body ?? {}
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã hồ sơ không hợp lệ.' })
+  if (!['accepted', 'rejected', 'pending'].includes(decisionStatus)) return response.status(400).json({ error: 'Kết quả tuyển dụng không hợp lệ.' })
+  const result = await withTransaction(async (transaction) => {
+    const application = await get('SELECT id, job_id, status, decision_status FROM applications WHERE id = ?', [id], transaction)
+    if (!application || application.status !== 'submitted') return { status: 404, error: 'Không tìm thấy hồ sơ ứng tuyển.' }
+    const job = await getEmployerJob(application.job_id, request.auth.user.id, transaction)
+    if (!job) return { status: 403, error: 'Bạn không có quyền quản lý hồ sơ của tin này.' }
+    if (decisionStatus !== 'rejected') {
+      const { applied } = await get(`
+        SELECT COUNT(*) AS applied
+        FROM applications
+        WHERE job_id = ? AND status = 'submitted'
+          AND decision_status IN ('pending', 'accepted')
+          AND id <> ?
+      `, [application.job_id, id], transaction)
+      if (applied >= Number(job.slots)) return { status: 409, error: 'Tin tuyển dụng đã hết slot.' }
+    }
+    await run('UPDATE applications SET decision_status = ? WHERE id = ?', [decisionStatus, id], transaction)
+    return { status: 200 }
+  }, { immediate: true })
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({ message: decisionStatus === 'accepted' ? 'Đã xác nhận trúng tuyển.' : decisionStatus === 'rejected' ? 'Đã từ chối ứng viên và giải phóng slot.' : 'Đã đưa hồ sơ về trạng thái chờ xử lý.' })
+})
+
+app.get('/api/employer/applications/:id/cv', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã hồ sơ không hợp lệ.' })
+  const row = await get(`
+    SELECT a.cv_path, a.cv_original_name, a.job_id
+    FROM applications a WHERE a.id = ? AND a.status = 'submitted'
+  `, [id])
+  if (!row || !(await getEmployerJob(row.job_id, request.auth.user.id))) {
+    return response.status(404).json({ error: 'Không tìm thấy CV hoặc bạn không có quyền truy cập.' })
+  }
+  if (!existsSync(resolve(cvDirectory, row.cv_path))) return response.status(404).json({ error: 'File CV không còn tồn tại.' })
+  const extension = `.${row.cv_path.split('.').pop()}`
+  response.type(cvTypes[extension]?.mime ?? 'application/octet-stream')
+  return response.download(resolve(cvDirectory, row.cv_path), row.cv_original_name)
+})
+
+app.get('/api/bookmarks', authenticateRequest, requireSeeker, async (request, response) => {
+  const savedJobs = await all(`
+    SELECT b.job_id, b.created_at, j.title, j.company
+    FROM bookmarks b
+    JOIN jobs j ON j.id = b.job_id
+    WHERE b.user_id = ?
+    ORDER BY b.created_at DESC
+  `, [request.auth.user.id])
+  const bookmarks = savedJobs.map((job) => ({
+    jobId: job.job_id,
+    title: job.title,
+    company: job.company,
+    createdAt: job.created_at,
+  }))
+  return response.json({ bookmarks })
+})
+
+app.post('/api/bookmarks/:jobId', authenticateRequest, requireSeeker, async (request, response) => {
+  const jobId = Number(request.params.jobId)
+  if (!Number.isSafeInteger(jobId) || jobId < 1) {
+    return response.status(400).json({ error: 'Mã công việc không hợp lệ.' })
+  }
+  const job = await get("SELECT id FROM jobs WHERE id = ? AND status = 'approved'", [jobId])
+  if (!job) return response.status(404).json({ error: 'Không tìm thấy tin tuyển dụng.' })
+  await withTransaction(async (transaction) => {
+    const existing = await get('SELECT id FROM bookmarks WHERE user_id = ? AND job_id = ?', [request.auth.user.id, jobId], transaction)
+    if (!existing) await run('INSERT INTO bookmarks (user_id, job_id) VALUES (?, ?)', [request.auth.user.id, jobId], transaction)
+  }, { immediate: true })
+  return response.status(201).json({ message: 'Đã lưu tin tuyển dụng.' })
+})
+
+app.delete('/api/bookmarks/:jobId', authenticateRequest, requireSeeker, async (request, response) => {
+  const jobId = Number(request.params.jobId)
+  await run('DELETE FROM bookmarks WHERE user_id = ? AND job_id = ?', [request.auth.user.id, jobId])
+  return response.json({ message: 'Đã bỏ lưu tin tuyển dụng.' })
 })
 
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
@@ -591,6 +766,62 @@ app.put('/api/company', authenticateRequest, requireEmployer, async (request, re
   }, { immediate: true })
   return response.json({ message: 'Đã lưu thông tin doanh nghiệp.', company })
 })
+const jobStatuses = ['pending', 'approved', 'rejected', 'hidden', 'closed']
+const allowedJobTransitions = {
+    pending: ['approved', 'rejected'],
+    approved: ['hidden', 'closed'],
+    hidden: ['approved', 'closed'],
+    closed: ['approved'],
+    rejected: ['approved'],
+}
+app.get('/api/admin/jobs', authenticateRequest, requireAdmin, async (request, response) => {
+    const status = request.query.status
+    if (status !== undefined && (typeof status !== 'string' || !jobStatuses.includes(status))) {
+        return response.status(400).json({ error: 'Trạng thái lọc không hợp lệ.' })
+    }
+    const columns = 'id, title, company, location, type, category, status, review_note, reviewed_at, created_at'
+    const rows = status
+        ? await all(`SELECT ${columns} FROM jobs WHERE status = ? ORDER BY created_at DESC, id DESC`, [status])
+        : await all(`SELECT ${columns} FROM jobs ORDER BY created_at DESC, id DESC`)
+    return response.json({ jobs: rows, allowedTransitions: allowedJobTransitions })
+})
+app.patch('/api/admin/jobs/:id/status', authenticateRequest, requireAdmin, async (request, response) => {
+    const id = Number(request.params.id)
+    const { status, note } = request.body ?? {}
+    if (!Number.isSafeInteger(id) || id < 1) {
+        return response.status(400).json({ error: 'Mã tin tuyển dụng không hợp lệ.' })
+    }
+    if (!jobStatuses.includes(status)) {
+        return response.status(400).json({ error: 'Trạng thái không hợp lệ.' })
+    }
+    const reviewNote = typeof note === 'string' ? note.trim() : ''
+    if (reviewNote.length > 500) {
+        return response.status(400).json({ error: 'Ghi chú tối đa 500 ký tự.' })
+    }
+    if (status === 'rejected' && reviewNote.length < 5) {
+        return response.status(400).json({ error: 'Vui lòng nhập lý do từ chối (ít nhất 5 ký tự).' })
+    }
+    const job = await get('SELECT id, status FROM jobs WHERE id = ?', [id])
+    if (!job) return response.status(404).json({ error: 'Không tìm thấy tin tuyển dụng.' })
+    if (!(allowedJobTransitions[job.status] ?? []).includes(status)) {
+        return response.status(409).json({ error: `Không thể chuyển tin từ “${job.status}” sang “${status}”.` })
+    }
+    // AND status = ? : nếu admin khác vừa đổi trạng thái thì lệnh này không cập nhật dòng nào.
+    const result = await run(`
+    UPDATE jobs SET status = ?, review_note = ?, reviewed_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = ?
+  `, [status, reviewNote || null, id, job.status])
+    if (result.changes === 0) {
+        return response.status(409).json({ error: 'Tin vừa được người khác cập nhật. Vui lòng tải lại danh sách.' })
+    }
+    return response.json({ message: 'Đã cập nhật trạng thái tin tuyển dụng.' })
+})
+app.get('/api/admin/emails', authenticateRequest, requireAdmin, async (_request, response) => {
+    // Không dùng LIMIT/TOP vì SQLite và SQL Server viết khác nhau; bảng nhỏ nên cắt ở đây.
+    const emails = await all('SELECT id, to_email, subject, body, status, error, created_at FROM email_outbox ORDER BY id DESC')
+    return response.json({ emails: emails.slice(0, 50) })
+})
+
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))
 
 app.use((error, _request, response, _next) => {
@@ -675,9 +906,46 @@ async function initializeEmployerAccount() {
   `, [settings.name.trim(), email, phone, passwordHash])
   console.log(`Tài khoản nhà tuyển dụng đã được tạo: ${email}`)
 }
-
+async function initializeAdminAccount() {
+    const settings = {
+        name: process.env.ADMIN_NAME,
+        email: process.env.ADMIN_EMAIL,
+        phone: process.env.ADMIN_PHONE,
+        password: process.env.ADMIN_PASSWORD,
+    }
+    const configuredValues = Object.values(settings).filter(Boolean).length
+    if (configuredValues === 0) return
+    if (configuredValues !== Object.keys(settings).length) {
+        throw new Error('Cần cấu hình đầy đủ ADMIN_NAME, ADMIN_EMAIL, ADMIN_PHONE và ADMIN_PASSWORD để tạo tài khoản quản trị viên.')
+    }
+    if (settings.name.trim().length < 2 || settings.name.trim().length > 80
+        || !isEmail(settings.email.trim()) || !isPhoneInput(settings.phone)
+        || settings.password.length < 8 || Buffer.byteLength(settings.password, 'utf8') > 72) {
+        throw new Error('Thông tin ADMIN_* không hợp lệ; hãy kiểm tra tên, email, điện thoại và mật khẩu (8–72 byte).')
+    }
+    const email = settings.email.trim().toLowerCase()
+    const phone = normalizePhone(settings.phone)
+    const existingUsers = await all('SELECT id, email, phone, role FROM users WHERE email = ? OR phone = ?', [email, phone])
+    if (existingUsers.length > 0) {
+        const matchingAdmin = existingUsers.length === 1
+            && existingUsers[0].role === 'admin'
+            && existingUsers[0].email === email
+            && existingUsers[0].phone === phone
+        if (!matchingAdmin) {
+            throw new Error('ADMIN_EMAIL hoặc ADMIN_PHONE đã được dùng bởi tài khoản khác.')
+        }
+        return
+    }
+    const passwordHash = await bcrypt.hash(settings.password, bcryptRounds)
+    await run(`
+    INSERT INTO users (name, email, phone, password_hash, role)
+    VALUES (?, ?, ?, ?, 'admin')
+  `, [settings.name.trim(), email, phone, passwordHash])
+    console.log(`Tài khoản quản trị viên đã được tạo: ${email}`)
+}
 await initializeSupportAccount()
 await initializeEmployerAccount()
+await initializeAdminAccount()
 
 app.listen(port, () => {
   console.log(`StuWork API listening on http://localhost:${port}`)
