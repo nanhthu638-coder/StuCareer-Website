@@ -1,12 +1,3 @@
-import { mockCompanies } from '../../data/mockCompanies.js'
-
-export const companies = [
-  ...mockCompanies.map((company) => ({
-    ...company,
-    openJobs: company.jobs.map((job) => job.title),
-  })),
-]
-
 export const synonymGroups = [
   { canonical: 'cv', aliases: ['resume', 'cv'] },
   { canonical: 'phỏng vấn', aliases: ['interview', 'phỏng vấn'] },

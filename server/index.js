@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import express from 'express'
 import { all, get, initializeDatabase, run, withTransaction } from './database.js'
+import { notifyApplicationResult, sendEmail } from './mailer.js'
 import { seedJobCatalog } from './seed-job-catalog.js'
 
 const directory = dirname(fileURLToPath(import.meta.url))
@@ -23,6 +24,7 @@ const app = express()
 const otpByIdentifier = new Map()
 const resetTokens = new Map()
 const requestTimes = new Map()
+const chatRequestTimes = new Map()
 const sessions = new Map()
 const port = Number(process.env.PORT) || 3001
 const bcryptRounds = 12
@@ -38,7 +40,7 @@ const cvTypes = {
 }
 
 app.disable('x-powered-by')
-app.use(express.json({ limit: '10kb' }))
+app.use(express.json({ limit: '64kb' }))
 const cvUpload = express.raw({ type: 'application/octet-stream', limit: maxCvBytes })
 
 function normalizePhone(value) {
@@ -174,7 +176,7 @@ app.delete('/api/auth/session', authenticateRequest, (request, response) => {
   return response.json({ message: 'Đăng xuất thành công.' })
 })
 
-app.post('/api/contact', async (request, response) => {
+app.post('/api/contact', optionalAuthentication, async (request, response) => {
   const { name, email, subject, message } = request.body ?? {}
   if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
     return response.status(400).json({ error: 'Họ tên cần có từ 2 đến 80 ký tự.' })
@@ -189,12 +191,58 @@ app.post('/api/contact', async (request, response) => {
     return response.status(400).json({ error: 'Nội dung cần có từ 10 đến 5000 ký tự.' })
   }
 
+  // Gắn với tài khoản đang đăng nhập để sau này thông báo kết quả xử lý ngay trong ứng dụng.
   await run(`
-    INSERT INTO contact_requests (name, email, subject, message)
-    VALUES (?, ?, ?, ?)
-  `, [name.trim(), email.trim().toLowerCase(), subject.trim(), message.trim()])
+    INSERT INTO contact_requests (name, email, subject, message, user_id)
+    VALUES (?, ?, ?, ?, ?)
+  `, [name.trim(), email.trim().toLowerCase(), subject.trim(), message.trim(), request.auth?.user.id ?? null])
   return response.status(201).json({ message: 'Biểu mẫu của bạn đã được gửi.' })
 })
+
+const contactStatuses = ['new', 'in_progress', 'resolved']
+
+// Dùng chung cho admin và nhân viên hỗ trợ: đổi trạng thái, và khi xử lý xong thì báo cho người gửi.
+async function updateContactRequest({ id, status, note, assignedRole }) {
+  const existing = await get(
+    `SELECT id, name, email, subject, status FROM contact_requests WHERE id = ?${assignedRole ? ' AND assigned_role = ?' : ''}`,
+    assignedRole ? [id, assignedRole] : [id],
+  )
+  if (!existing) return { status: 404, error: 'Không tìm thấy yêu cầu hỗ trợ.' }
+  if (existing.status === status) return { status: 409, error: 'Yêu cầu đang ở trạng thái này rồi.' }
+  const result = await run(`
+    UPDATE contact_requests
+    SET status = ?, resolution_note = ?,
+        resolved_at = CASE WHEN ? = 'resolved' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        user_seen = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = ?
+  `, [status, status === 'resolved' ? note || null : null, status, id, existing.status])
+  if (result.changes === 0) return { status: 409, error: 'Yêu cầu vừa được người khác cập nhật. Vui lòng tải lại danh sách.' }
+  if (status !== 'resolved') return { status: 200 }
+  const email = await sendEmail({
+    to: existing.email,
+    subject: '[StuWork] Thắc mắc của bạn đã được xử lý',
+    text: `Xin chào ${existing.name},
+
+Thắc mắc "${existing.subject}" của bạn đã được đội ngũ StuWork xử lý.${note ? `\n\nPhản hồi: ${note}` : ''}
+
+Nếu cần hỗ trợ thêm, bạn có thể gửi biểu mẫu liên hệ mới trên StuWork.
+
+Trân trọng,
+Đội ngũ StuWork`,
+  })
+  return { status: 200, emailStatus: email.status }
+}
+
+function readContactUpdate(request) {
+  const id = Number(request.params.id)
+  const { status, note } = request.body ?? {}
+  if (!Number.isSafeInteger(id) || id < 1) return { error: 'Mã yêu cầu không hợp lệ.' }
+  if (!contactStatuses.includes(status)) return { error: 'Trạng thái yêu cầu không hợp lệ.' }
+  if (note !== undefined && note !== null && typeof note !== 'string') return { error: 'Phản hồi không hợp lệ.' }
+  const trimmedNote = typeof note === 'string' ? note.trim() : ''
+  if (trimmedNote.length > 1000) return { error: 'Phản hồi tối đa 1000 ký tự.' }
+  return { id, status, note: trimmedNote }
+}
 
 app.get('/api/support/requests', authenticateRequest, requireSupportRole, async (_request, response) => {
   const requests = await all(`
@@ -207,22 +255,98 @@ app.get('/api/support/requests', authenticateRequest, requireSupportRole, async 
 })
 
 app.patch('/api/support/requests/:id', authenticateRequest, requireSupportRole, async (request, response) => {
+  const update = readContactUpdate(request)
+  if (update.error) return response.status(400).json({ error: update.error })
+  const result = await updateContactRequest({ ...update, assignedRole: 'support' })
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({ message: 'Đã cập nhật trạng thái yêu cầu.', emailStatus: result.emailStatus })
+})
+
+app.get('/api/admin/contact-requests', authenticateRequest, requireAdmin, async (_request, response) => {
+  const rows = await all(`
+    SELECT id, name, email, subject, message, status, resolution_note, resolved_at, user_id, created_at
+    FROM contact_requests
+    ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, created_at DESC, id DESC
+  `)
+  const requests = rows.map(({ user_id: userId, ...row }) => ({ ...row, hasAccount: userId !== null && userId !== undefined }))
+  return response.json({ requests })
+})
+
+app.patch('/api/admin/contact-requests/:id', authenticateRequest, requireAdmin, async (request, response) => {
+  const update = readContactUpdate(request)
+  if (update.error) return response.status(400).json({ error: update.error })
+  const result = await updateContactRequest(update)
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({
+    message: update.status === 'resolved' ? 'Đã xử lý thắc mắc và thông báo cho người gửi.' : 'Đã cập nhật trạng thái yêu cầu.',
+    emailStatus: result.emailStatus,
+  })
+})
+
+app.get('/api/notifications/contact', authenticateRequest, async (request, response) => {
+  const rows = await all(`
+    SELECT id, subject, resolution_note, resolved_at, user_seen
+    FROM contact_requests
+    WHERE user_id = ? AND status = 'resolved'
+    ORDER BY resolved_at DESC, id DESC
+  `, [request.auth.user.id])
+  const notices = rows.slice(0, 20).map((row) => ({
+    id: row.id,
+    subject: row.subject,
+    note: row.resolution_note || '',
+    resolvedAt: row.resolved_at,
+    seen: Number(row.user_seen) === 1,
+  }))
+  return response.json({ notices })
+})
+
+app.post('/api/notifications/contact/:id/seen', authenticateRequest, async (request, response) => {
   const id = Number(request.params.id)
-  const { status } = request.body ?? {}
-  if (!Number.isSafeInteger(id) || id < 1) {
-    return response.status(400).json({ error: 'Mã yêu cầu không hợp lệ.' })
-  }
-  if (!['new', 'in_progress', 'resolved'].includes(status)) {
-    return response.status(400).json({ error: 'Trạng thái yêu cầu không hợp lệ.' })
-  }
-  const result = await run(`
-    UPDATE contact_requests SET status = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND assigned_role = 'support'
-  `, [status, id])
-  if (result.changes === 0) {
-    return response.status(404).json({ error: 'Không tìm thấy yêu cầu hỗ trợ.' })
-  }
-  return response.json({ message: 'Đã cập nhật trạng thái yêu cầu.' })
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã thông báo không hợp lệ.' })
+  await run('UPDATE contact_requests SET user_seen = 1 WHERE id = ? AND user_id = ?', [id, request.auth.user.id])
+  return response.json({ message: 'Đã đánh dấu đã đọc.' })
+})
+
+app.get('/api/notifications/employer', authenticateRequest, requireEmployer, async (request, response) => {
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [request.auth.user.id])
+  if (!company?.name) return response.json({ notices: [] })
+  const rows = await all(`
+    SELECT a.id, a.created_at, a.employer_seen, a.decision_status,
+           u.name AS candidate_name, u.major, j.id AS job_id, j.title, j.company
+    FROM applications a
+    JOIN users u ON u.id = a.user_id
+    JOIN jobs j ON j.id = a.job_id
+    WHERE a.status = 'submitted' AND LOWER(j.company) = LOWER(?)
+    ORDER BY a.created_at DESC, a.id DESC
+  `, [company.name.trim()])
+  const notices = rows.slice(0, 20).map((row) => ({
+    id: row.id,
+    jobId: row.job_id,
+    candidateName: row.candidate_name,
+    major: row.major || '',
+    jobTitle: row.title,
+    company: row.company,
+    decisionStatus: row.decision_status || 'pending',
+    createdAt: row.created_at,
+    seen: Number(row.employer_seen) === 1,
+  }))
+  return response.json({ notices })
+})
+
+app.post('/api/notifications/employer/:id/seen', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã thông báo không hợp lệ.' })
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [request.auth.user.id])
+  if (!company?.name) return response.status(404).json({ error: 'Không tìm thấy thông tin doanh nghiệp.' })
+  const application = await get(`
+    SELECT a.id
+    FROM applications a
+    JOIN jobs j ON j.id = a.job_id
+    WHERE a.id = ? AND a.status = 'submitted' AND LOWER(j.company) = LOWER(?)
+  `, [id, company.name.trim()])
+  if (!application) return response.status(404).json({ error: 'Không tìm thấy thông báo thuộc doanh nghiệp của bạn.' })
+  await run('UPDATE applications SET employer_seen = 1 WHERE id = ?', [id])
+  return response.json({ message: 'Đã đánh dấu đã đọc.' })
 })
 
 app.post('/api/auth/forgot-password', async (request, response) => {
@@ -498,6 +622,112 @@ app.get('/api/jobs/:id/availability', optionalAuthentication, async (request, re
   return response.json(availability)
 })
 
+function localChatReply(message) {
+  const text = message.toLocaleLowerCase('vi')
+  if (/(định hướng|nghề nghiệp|chọn ngành|đổi ngành)/.test(text)) {
+    return 'Bạn có thể bắt đầu bằng ba câu hỏi: ngành nào phù hợp với sở thích của bạn, kỹ năng hiện có là gì và môi trường làm việc mong muốn ra sao. Tiếp theo hãy thử một dự án nhỏ, nói chuyện với người đang làm nghề và đọc mô tả công việc thực tế. Nếu bạn cho mình biết điểm mạnh, sở thích và môn học yêu thích, mình có thể gợi ý hướng nghề cụ thể.'
+  }
+  if (/(portfolio|dự án|github)/.test(text)) {
+    return 'Một portfolio tốt nên có 3–4 dự án chọn lọc. Mỗi dự án cần nêu bài toán, vai trò của bạn, công nghệ/cách làm, liên kết demo hoặc mã nguồn và kết quả đo được. Hãy ưu tiên một dự án giải quyết vấn đề thật thay vì nhiều dự án sao chép giống nhau.'
+  }
+  if (/(email|thư xin việc|cover letter)/.test(text)) {
+    return 'Email ứng tuyển nên có tiêu đề rõ ràng, lời chào, vị trí đang ứng tuyển, 2–3 lý do bạn phù hợp và lời cảm ơn. Không sao chép lại toàn bộ CV; hãy thêm một đường dẫn CV/portfolio và kiểm tra tên công ty, thông tin liên hệ trước khi gửi.'
+  }
+  if (/(kỹ năng mềm|giao tiếp|làm việc nhóm|thuyết trình)/.test(text)) {
+    return 'Để phát triển kỹ năng mềm, hãy luyện theo tình huống thật: đặt mục tiêu cụ thể, nhận vai trong bài tập nhóm, xin phản hồi và ghi lại điều cần cải thiện. Với giao tiếp, dùng cấu trúc “bối cảnh – ý chính – hành động – kết quả”; với làm việc nhóm, làm rõ trách nhiệm và thời hạn ngay từ đầu.'
+  }
+  if (/(học|khóa học|tự học|lộ trình)/.test(text)) {
+    return 'Một lộ trình tự học hiệu quả gồm mục tiêu cụ thể, 1–2 nguồn học đáng tin, bài thực hành mỗi tuần và dự án tổng hợp. Hãy chia giai đoạn thành nền tảng, luyện tập và dự án; đo tiến bộ bằng sản phẩm hoặc bài kiểm tra thay vì chỉ đếm số giờ xem video.'
+  }
+  return 'Mình có thể trao đổi sâu hơn về học tập, định hướng nghề nghiệp, CV, portfolio, phỏng vấn, kỹ năng mềm và cách ứng tuyển. Hãy mô tả rõ tình huống hoặc mục tiêu của bạn; nếu câu hỏi liên quan y tế, pháp lý hoặc tài chính quan trọng, bạn nên tham khảo chuyên gia hoặc nguồn chính thức.'
+}
+
+app.post('/api/chat', optionalAuthentication, async (request, response) => {
+  const message = typeof request.body?.message === 'string' ? request.body.message.trim() : ''
+  if (!message || message.length > 2000) {
+    return response.status(400).json({ error: 'Tin nhắn phải có từ 1 đến 2000 ký tự.' })
+  }
+
+  const clientKey = request.auth?.user.id ? `user:${request.auth.user.id}` : request.ip
+  const now = Date.now()
+  const recent = (chatRequestTimes.get(clientKey) ?? []).filter((time) => now - time < 60_000)
+  if (recent.length >= 15) {
+    return response.status(429).json({ error: 'Bạn đang gửi tin nhắn quá nhanh. Vui lòng thử lại sau một phút.' })
+  }
+  chatRequestTimes.set(clientKey, [...recent, now])
+  if (chatRequestTimes.size > 5000) {
+    for (const [key, times] of chatRequestTimes) {
+      if (!times.some((time) => now - time < 60_000)) chatRequestTimes.delete(key)
+    }
+  }
+
+  const history = Array.isArray(request.body?.history)
+    ? request.body.history
+      .filter((item) => item && ['user', 'assistant'].includes(item.role) && typeof item.content === 'string')
+      .slice(-8)
+      .map((item) => ({ role: item.role, content: item.content.trim().slice(0, 2000) }))
+      .filter((item) => item.content)
+    : []
+  const endpoint = process.env.CHATBOT_API_URL?.trim()
+  if (!endpoint) return response.json({ reply: localChatReply(message), source: 'local' })
+
+  let endpointUrl
+  try {
+    endpointUrl = new URL(endpoint)
+    if (!['http:', 'https:'].includes(endpointUrl.protocol)) throw new Error('protocol')
+  } catch {
+    console.error('CHATBOT_API_URL không hợp lệ.')
+    return response.status(500).json({ error: 'Dịch vụ AI chưa được cấu hình hợp lệ.' })
+  }
+
+  const jobs = await all(`
+    SELECT id, title, company, location, category, slots, deadline
+    FROM jobs WHERE status = 'approved'
+    ORDER BY id DESC
+  `)
+  const jobContext = jobs.slice(0, 20).map((job) => (
+    `${job.title} tại ${job.company} (${job.location}, lĩnh vực ${job.category})`
+  )).join('; ')
+  const systemPrompt = [
+    'Bạn là trợ lý StuWork, trả lời bằng tiếng Việt, thân thiện, hữu ích và súc tích.',
+    'Bạn được phép trả lời các câu hỏi ngoài tuyển dụng nếu an toàn, nhưng không bịa thông tin thời sự, số liệu hoặc chính sách công ty.',
+    'Với câu hỏi cần thông tin cập nhật, hãy nói rõ giới hạn kiến thức và hướng người dùng kiểm tra nguồn chính thức.',
+    'Không yêu cầu hoặc suy luận thông tin nhạy cảm; cảnh báo nhẹ khi câu hỏi thuộc y tế, pháp lý hoặc tài chính quan trọng.',
+    `Các việc làm hiện có trên StuWork: ${jobContext || 'hiện chưa có tin đã duyệt'}.`,
+  ].join('\n')
+
+  try {
+    const providerResponse = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.CHATBOT_API_KEY ? { Authorization: `Bearer ${process.env.CHATBOT_API_KEY}` } : {}),
+      },
+      body: JSON.stringify({
+        model: process.env.CHATBOT_MODEL || 'gpt-4o-mini',
+        messages: [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: message }],
+        temperature: 0.7,
+      }),
+      signal: AbortSignal.timeout(25_000),
+    })
+    if (!providerResponse.ok) {
+      console.error(`Nhà cung cấp chatbot trả lỗi HTTP ${providerResponse.status}.`)
+      return response.status(502).json({ error: 'Trợ lý AI nâng cao đang tạm thời gián đoạn. Câu trả lời cơ bản vẫn khả dụng.' })
+    }
+    const result = await providerResponse.json()
+    const reply = result?.choices?.[0]?.message?.content
+      || result?.output?.[0]?.content?.[0]?.text
+      || result?.reply
+    if (typeof reply !== 'string' || !reply.trim()) {
+      return response.status(502).json({ error: 'Dịch vụ AI trả về nội dung không hợp lệ.' })
+    }
+    return response.json({ reply: reply.trim(), source: 'ai' })
+  } catch (error) {
+    console.error('Không thể gọi dịch vụ chatbot:', error)
+    return response.status(502).json({ error: 'Trợ lý AI nâng cao đang tạm thời gián đoạn. Câu trả lời cơ bản vẫn khả dụng.' })
+  }
+})
+
 app.get('/api/jobs/:id', async (request, response) => {
   const jobId = Number(request.params.id)
   if (!Number.isSafeInteger(jobId) || jobId < 1) {
@@ -546,7 +776,8 @@ app.post('/api/jobs/:id/apply', authenticateRequest, requireSeeker, async (reque
 
     if (existing) {
       await run(`
-        UPDATE applications SET status = 'submitted', cover_letter = ?, cv_path = ?, cv_original_name = ?, created_at = CURRENT_TIMESTAMP
+        UPDATE applications SET status = 'submitted', cover_letter = ?, cv_path = ?, cv_original_name = ?,
+          decision_status = 'pending', employer_seen = 0, created_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `, [coverLetter.value, user.cv_path, user.cv_original_name, existing.id], transaction)
     } else {
@@ -600,7 +831,7 @@ async function getEmployerJob(jobId, userId, transaction) {
   const company = await get('SELECT name FROM companies WHERE user_id = ?', [userId], transaction)
   if (!company?.name) return null
   const job = await get(
-    'SELECT id, title, company, slots FROM jobs WHERE id = ?',
+    'SELECT id, title, company, slots, status FROM jobs WHERE id = ?',
     [jobId],
     transaction,
   )
@@ -641,7 +872,14 @@ app.patch('/api/employer/applications/:id/decision', authenticateRequest, requir
   if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã hồ sơ không hợp lệ.' })
   if (!['accepted', 'rejected', 'pending'].includes(decisionStatus)) return response.status(400).json({ error: 'Kết quả tuyển dụng không hợp lệ.' })
   const result = await withTransaction(async (transaction) => {
-    const application = await get('SELECT id, job_id, status, decision_status FROM applications WHERE id = ?', [id], transaction)
+    const application = await get(`
+      SELECT a.id, a.job_id, a.status, a.decision_status,
+             u.name AS candidate_name, u.email, j.title, j.company
+      FROM applications a
+      JOIN users u ON u.id = a.user_id
+      JOIN jobs j ON j.id = a.job_id
+      WHERE a.id = ?
+    `, [id], transaction)
     if (!application || application.status !== 'submitted') return { status: 404, error: 'Không tìm thấy hồ sơ ứng tuyển.' }
     const job = await getEmployerJob(application.job_id, request.auth.user.id, transaction)
     if (!job) return { status: 403, error: 'Bạn không có quyền quản lý hồ sơ của tin này.' }
@@ -655,11 +893,35 @@ app.patch('/api/employer/applications/:id/decision', authenticateRequest, requir
       `, [application.job_id, id], transaction)
       if (applied >= Number(job.slots)) return { status: 409, error: 'Tin tuyển dụng đã hết slot.' }
     }
+    const shouldNotify = application.decision_status !== decisionStatus
+      && ['accepted', 'rejected'].includes(decisionStatus)
     await run('UPDATE applications SET decision_status = ? WHERE id = ?', [decisionStatus, id], transaction)
-    return { status: 200 }
+    return { status: 200, shouldNotify, application }
   }, { immediate: true })
   if (result.error) return response.status(result.status).json({ error: result.error })
-  return response.json({ message: decisionStatus === 'accepted' ? 'Đã xác nhận trúng tuyển.' : decisionStatus === 'rejected' ? 'Đã từ chối ứng viên và giải phóng slot.' : 'Đã đưa hồ sơ về trạng thái chờ xử lý.' })
+  let emailStatus
+  let emailError
+  if (result.shouldNotify) {
+    try {
+      const emailResult = await notifyApplicationResult({
+        to: result.application.email,
+        candidateName: result.application.candidate_name,
+        jobTitle: result.application.title,
+        company: result.application.company,
+        result: decisionStatus,
+      })
+      emailStatus = emailResult.status
+      emailError = emailResult.error
+    } catch (error) {
+      console.error('Không thể ghi nhận email kết quả ứng tuyển:', error)
+      emailStatus = 'failed'
+      emailError = 'Không thể gửi hoặc ghi nhật ký email. Trạng thái hồ sơ vẫn đã được cập nhật.'
+    }
+  }
+  return response.json({
+    message: decisionStatus === 'accepted' ? 'Đã xác nhận trúng tuyển.' : decisionStatus === 'rejected' ? 'Đã từ chối ứng viên và giải phóng slot.' : 'Đã đưa hồ sơ về trạng thái chờ xử lý.',
+    ...(emailStatus ? { emailStatus, ...(emailError ? { emailError } : {}) } : {}),
+  })
 })
 
 app.get('/api/employer/applications/:id/cv', authenticateRequest, requireEmployer, async (request, response) => {
@@ -715,6 +977,234 @@ app.delete('/api/bookmarks/:jobId', authenticateRequest, requireSeeker, async (r
   return response.json({ message: 'Đã bỏ lưu tin tuyển dụng.' })
 })
 
+const jobTypes = ['Internship', 'Full-time', 'Part-time']
+const jobCategories = [
+  'Công nghệ thông tin', 'Marketing', 'Tài chính — Kế toán', 'Thiết kế sáng tạo',
+  'Kinh doanh', 'Nhân sự', 'Chăm sóc khách hàng', 'Giáo dục',
+]
+// Nhà tuyển dụng chỉ được ẩn/hiện/đóng/mở lại tin; duyệt và từ chối là việc của admin.
+const employerJobTransitions = {
+  approved: ['hidden', 'closed'],
+  hidden: ['approved', 'closed'],
+  closed: ['approved'],
+}
+
+function readJobList(value, label) {
+  if (value === undefined || value === null) return { value: [] }
+  const items = Array.isArray(value) ? value : null
+  if (!items || items.some((item) => typeof item !== 'string')) return { error: `${label} không hợp lệ.` }
+  const cleaned = items.map((item) => item.trim()).filter(Boolean)
+  if (cleaned.length > 10 || cleaned.some((item) => item.length > 200)) {
+    return { error: `${label} tối đa 10 dòng, mỗi dòng không quá 200 ký tự.` }
+  }
+  return { value: cleaned }
+}
+
+function readSalary(value) {
+  if (value === undefined || value === null || value === '') return { value: null }
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < 0 || number > 1000) return { error: true }
+  return { value: number }
+}
+
+function isValidDeadline(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
+  if (!match) return false
+  const [day, month, year] = match.slice(1).map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+}
+
+function parseJobInput(body) {
+  const input = body ?? {}
+  const text = (value) => (typeof value === 'string' ? value.trim() : '')
+  const title = text(input.title)
+  const location = text(input.location)
+  const description = text(input.description)
+  const deadline = text(input.deadline)
+  const slots = Number(input.slots)
+  const salaryMin = readSalary(input.salaryMin)
+  const salaryMax = readSalary(input.salaryMax)
+  const requirements = readJobList(input.requirements, 'Yêu cầu ứng viên')
+  const benefits = readJobList(input.benefits, 'Quyền lợi')
+
+  if (title.length < 3 || title.length > 200) return { error: 'Tiêu đề cần có từ 3 đến 200 ký tự.' }
+  if (location.length < 2 || location.length > 200) return { error: 'Địa điểm cần có từ 2 đến 200 ký tự.' }
+  if (!jobTypes.includes(input.type)) return { error: 'Hình thức làm việc không hợp lệ.' }
+  if (!jobCategories.includes(input.category)) return { error: 'Lĩnh vực không hợp lệ.' }
+  if (description.length < 10 || description.length > 3000) return { error: 'Mô tả công việc cần có từ 10 đến 3000 ký tự.' }
+  if (!Number.isInteger(slots) || slots < 1 || slots > 1000) return { error: 'Số lượng tuyển phải từ 1 đến 1000.' }
+  if (salaryMin.error || salaryMax.error) return { error: 'Mức lương phải là số nguyên từ 0 đến 1000 (triệu đồng).' }
+  if ((salaryMin.value === null) !== (salaryMax.value === null)) return { error: 'Vui lòng nhập đủ lương tối thiểu và tối đa, hoặc để trống cả hai.' }
+  if (salaryMin.value !== null && salaryMin.value > salaryMax.value) return { error: 'Lương tối thiểu không được lớn hơn lương tối đa.' }
+  if (requirements.error) return { error: requirements.error }
+  if (benefits.error) return { error: benefits.error }
+  if (deadline && !isValidDeadline(deadline)) return { error: 'Hạn nộp hồ sơ cần theo định dạng DD/MM/YYYY.' }
+  if (deadline && parseDeadline(deadline).getTime() < Date.now()) return { error: 'Hạn nộp hồ sơ phải ở tương lai.' }
+
+  return {
+    job: {
+      title, location, description, slots,
+      type: input.type,
+      category: input.category,
+      salaryMin: salaryMin.value,
+      salaryMax: salaryMax.value,
+      requirements: requirements.value,
+      benefits: benefits.value,
+      deadline: deadline || null,
+    },
+  }
+}
+
+function parseStoredList(value) {
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+async function countActiveApplications(jobId, transaction) {
+  const { applied } = await get(`
+    SELECT COUNT(*) AS applied FROM applications
+    WHERE job_id = ? AND status = 'submitted' AND decision_status IN ('pending', 'accepted')
+  `, [jobId], transaction)
+  return applied
+}
+
+app.get('/api/employer/jobs', authenticateRequest, requireEmployer, async (request, response) => {
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [request.auth.user.id])
+  if (!company?.name) return response.json({ jobs: [], companyName: '', allowedTransitions: employerJobTransitions })
+  const rows = await all(`
+    SELECT id, title, company, location, salary_min, salary_max, type, category, description,
+           requirements, benefits, slots, deadline, status, review_note, reviewed_at, created_at
+    FROM jobs
+    ORDER BY created_at DESC, id DESC
+  `)
+  const counts = await all(`
+    SELECT job_id,
+           COUNT(*) AS total,
+           SUM(CASE WHEN status = 'submitted' AND decision_status IN ('pending', 'accepted') THEN 1 ELSE 0 END) AS applied
+    FROM applications
+    GROUP BY job_id
+  `)
+  const countByJob = new Map(counts.map((row) => [Number(row.job_id), row]))
+  const companyName = company.name.trim().toLocaleLowerCase('vi')
+  const jobs = rows
+    .filter((row) => row.company.trim().toLocaleLowerCase('vi') === companyName)
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      salaryMin: row.salary_min,
+      salaryMax: row.salary_max,
+      type: row.type,
+      category: row.category,
+      description: row.description,
+      requirements: parseStoredList(row.requirements),
+      benefits: parseStoredList(row.benefits),
+      slots: row.slots,
+      deadline: row.deadline || '',
+      status: row.status,
+      reviewNote: row.review_note || '',
+      createdAt: row.created_at,
+      applied: Number(countByJob.get(row.id)?.applied ?? 0),
+      totalApplications: Number(countByJob.get(row.id)?.total ?? 0),
+    }))
+  return response.json({ jobs, companyName: company.name, allowedTransitions: employerJobTransitions })
+})
+
+app.post('/api/employer/jobs', authenticateRequest, requireEmployer, async (request, response) => {
+  const parsed = parseJobInput(request.body)
+  if (parsed.error) return response.status(400).json({ error: parsed.error })
+  const company = await get('SELECT name FROM companies WHERE user_id = ?', [request.auth.user.id])
+  if (!company?.name) {
+    return response.status(400).json({ error: 'Vui lòng cập nhật Thông tin doanh nghiệp trước khi đăng tin.' })
+  }
+  const { job } = parsed
+  await run(`
+    INSERT INTO jobs (
+      title, company, location, salary_min, salary_max, type, category,
+      tone, logo, description, requirements, benefits, slots, deadline, status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'teal', ?, ?, ?, ?, ?, ?, 'pending')
+  `, [
+    job.title, company.name.trim(), job.location, job.salaryMin, job.salaryMax, job.type, job.category,
+    company.name.trim().charAt(0).toLocaleUpperCase('vi'), job.description,
+    JSON.stringify(job.requirements), JSON.stringify(job.benefits), job.slots, job.deadline,
+  ])
+  return response.status(201).json({ message: 'Đã đăng tin. Tin sẽ hiển thị sau khi quản trị viên duyệt.' })
+})
+
+app.put('/api/employer/jobs/:id', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã tin tuyển dụng không hợp lệ.' })
+  const parsed = parseJobInput(request.body)
+  if (parsed.error) return response.status(400).json({ error: parsed.error })
+  const { job } = parsed
+  const result = await withTransaction(async (transaction) => {
+    if (!(await getEmployerJob(id, request.auth.user.id, transaction))) {
+      return { status: 404, error: 'Không tìm thấy tin tuyển dụng của bạn.' }
+    }
+    if (job.slots < await countActiveApplications(id, transaction)) {
+      return { status: 409, error: 'Số lượng tuyển không được nhỏ hơn số hồ sơ đang chiếm slot.' }
+    }
+    // Sửa nội dung thì tin quay về "Chờ duyệt" để admin kiểm tra lại.
+    await run(`
+      UPDATE jobs
+      SET title = ?, location = ?, salary_min = ?, salary_max = ?, type = ?, category = ?,
+          description = ?, requirements = ?, benefits = ?, slots = ?, deadline = ?,
+          status = 'pending', review_note = NULL, reviewed_at = NULL
+      WHERE id = ?
+    `, [
+      job.title, job.location, job.salaryMin, job.salaryMax, job.type, job.category,
+      job.description, JSON.stringify(job.requirements), JSON.stringify(job.benefits), job.slots, job.deadline, id,
+    ], transaction)
+    return { status: 200 }
+  }, { immediate: true })
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({ message: 'Đã lưu thay đổi. Tin được gửi lại để quản trị viên duyệt.' })
+})
+
+app.patch('/api/employer/jobs/:id/status', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  const { status } = request.body ?? {}
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã tin tuyển dụng không hợp lệ.' })
+  if (!jobStatuses.includes(status)) return response.status(400).json({ error: 'Trạng thái không hợp lệ.' })
+  const result = await withTransaction(async (transaction) => {
+    const job = await getEmployerJob(id, request.auth.user.id, transaction)
+    if (!job) return { status: 404, error: 'Không tìm thấy tin tuyển dụng của bạn.' }
+    if (!(employerJobTransitions[job.status] ?? []).includes(status)) {
+      return { status: 409, error: 'Bạn không thể chuyển tin sang trạng thái này ở thời điểm hiện tại.' }
+    }
+    await run('UPDATE jobs SET status = ? WHERE id = ? AND status = ?', [status, id, job.status], transaction)
+    return { status: 200 }
+  }, { immediate: true })
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({ message: 'Đã cập nhật trạng thái tin tuyển dụng.' })
+})
+
+app.delete('/api/employer/jobs/:id', authenticateRequest, requireEmployer, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isSafeInteger(id) || id < 1) return response.status(400).json({ error: 'Mã tin tuyển dụng không hợp lệ.' })
+  const result = await withTransaction(async (transaction) => {
+    if (!(await getEmployerJob(id, request.auth.user.id, transaction))) {
+      return { status: 404, error: 'Không tìm thấy tin tuyển dụng của bạn.' }
+    }
+    const { total } = await get('SELECT COUNT(*) AS total FROM applications WHERE job_id = ?', [id], transaction)
+    if (total > 0) {
+      return { status: 409, error: 'Tin đã có hồ sơ ứng tuyển nên không thể xóa. Hãy dùng Ẩn tin hoặc Đóng tuyển.' }
+    }
+    await run('DELETE FROM bookmarks WHERE job_id = ?', [id], transaction)
+    await run('DELETE FROM jobs WHERE id = ?', [id], transaction)
+    return { status: 200 }
+  }, { immediate: true })
+  if (result.error) return response.status(result.status).json({ error: result.error })
+  return response.json({ message: 'Đã xóa tin tuyển dụng.' })
+})
+
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
 
 app.get('/api/company', authenticateRequest, requireEmployer, async (request, response) => {
@@ -749,7 +1239,7 @@ app.put('/api/company', authenticateRequest, requireEmployer, async (request, re
     return response.status(400).json({ error: 'Giới thiệu không được vượt quá 1000 ký tự.' })
   }
   await withTransaction(async (transaction) => {
-    const existing = await get('SELECT user_id FROM companies WHERE user_id = ?', [request.auth.user.id], transaction)
+    const existing = await get('SELECT user_id, name FROM companies WHERE user_id = ?', [request.auth.user.id], transaction)
     const values = [company.name, company.industry, company.size, company.address, company.website, company.description]
     if (existing) {
       await run(`
@@ -757,6 +1247,18 @@ app.put('/api/company', authenticateRequest, requireEmployer, async (request, re
         SET name = ?, industry = ?, size = ?, address = ?, website = ?, description = ?, updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
       `, [...values, request.auth.user.id], transaction)
+      // Tin tuyển dụng gắn với doanh nghiệp theo tên, nên đổi tên công ty phải đổi theo để không mất quyền quản lý tin.
+      if (existing.name !== company.name) {
+        const oldName = existing.name.trim().toLocaleLowerCase('vi')
+        const jobs = await all('SELECT id, company FROM jobs', [], transaction)
+        for (const job of jobs.filter((item) => item.company.trim().toLocaleLowerCase('vi') === oldName)) {
+          await run('UPDATE jobs SET company = ?, logo = ? WHERE id = ?', [
+            company.name,
+            company.name.charAt(0).toLocaleUpperCase('vi'),
+            job.id,
+          ], transaction)
+        }
+      }
     } else {
       await run(`
         INSERT INTO companies (user_id, name, industry, size, address, website, description)
@@ -765,6 +1267,12 @@ app.put('/api/company', authenticateRequest, requireEmployer, async (request, re
     }
   }, { immediate: true })
   return response.json({ message: 'Đã lưu thông tin doanh nghiệp.', company })
+})
+
+// Thông tin doanh nghiệp công khai: nguồn chung cho trang CompanyDetail và thẻ công ty của chatbot.
+app.get('/api/companies', async (_request, response) => {
+  const companies = await all('SELECT name, industry, size, address, website, description FROM companies ORDER BY name')
+  return response.json({ companies: companies.filter((company) => company.name?.trim()) })
 })
 const jobStatuses = ['pending', 'approved', 'rejected', 'hidden', 'closed']
 const allowedJobTransitions = {
@@ -779,7 +1287,8 @@ app.get('/api/admin/jobs', authenticateRequest, requireAdmin, async (request, re
     if (status !== undefined && (typeof status !== 'string' || !jobStatuses.includes(status))) {
         return response.status(400).json({ error: 'Trạng thái lọc không hợp lệ.' })
     }
-    const columns = 'id, title, company, location, type, category, status, review_note, reviewed_at, created_at'
+    const columns = `id, title, company, location, salary_min, salary_max, slots, deadline, type, category,
+        description, requirements, benefits, status, review_note, reviewed_at, created_at`
     const rows = status
         ? await all(`SELECT ${columns} FROM jobs WHERE status = ? ORDER BY created_at DESC, id DESC`, [status])
         : await all(`SELECT ${columns} FROM jobs ORDER BY created_at DESC, id DESC`)

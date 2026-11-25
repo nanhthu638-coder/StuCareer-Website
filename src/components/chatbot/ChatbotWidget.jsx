@@ -11,8 +11,9 @@ import {
 } from 'lucide-react'
 import CompanyCard from './CompanyCard.jsx'
 import JobCard from './JobCard.jsx'
-import { jobs } from '../../jobsData.js'
-import { companies, intents, synonymGroups, welcomeReplies } from './mockData.js'
+import { requestApiJson } from '../../api.js'
+import { buildCompanies, isOpenJob, loadLiveData, newestOpenJob } from './liveJobs.js'
+import { intents, synonymGroups, welcomeReplies } from './mockData.js'
 import './ChatbotWidget.css'
 
 const socialResponse = intents.social.response
@@ -80,7 +81,8 @@ function rankJob(job, searchTerms, includeIntern) {
   return score
 }
 
-function findMatchingJob(normalizedText) {
+// Chỉ gợi ý tin còn slot và còn hạn; nếu chỉ có tin đã hết chỗ thì báo riêng để người dùng không bấm vào tin không ứng tuyển được.
+function findMatchingJob(normalizedText, jobs) {
   const terms = normalizedText
     .split(' ')
     .filter((term) => term && !jobSearchStopWords.has(term))
@@ -88,13 +90,16 @@ function findMatchingJob(normalizedText) {
   if (terms.length === 0) return null
 
   const includeIntern = normalizedText.split(' ').includes('intern')
-  return jobs
+  const ranked = jobs
     .map((job, index) => ({ job, index, score: rankJob(job, terms, includeIntern) }))
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.job || null
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+  const open = ranked.find((candidate) => isOpenJob(candidate.job))
+  if (open) return { job: open.job }
+  return ranked.length > 0 ? { unavailable: ranked[0].job } : null
 }
 
-function getBotResponse(text) {
+function getBotResponse(text, jobs) {
   const normalized = normalizeInput(text)
   const hasCv = containsPhrase(normalized, 'cv')
   const hasInterview = containsPhrase(normalized, 'phỏng vấn')
@@ -127,8 +132,22 @@ function getBotResponse(text) {
   const hasInternPositionSearch = normalized.startsWith(`${intents.jobSearch.internPrefix} `)
     && !containsPhrase(normalized, 'lương')
   if (hasExplicitJobIntent || hasInternPositionSearch) {
-    const job = findMatchingJob(normalized)
-    if (job) return { job, emotion: 'happy' }
+    if (!jobs) {
+      return {
+        text: 'Mình chưa kết nối được dữ liệu việc làm lúc này. Bạn thử lại sau ít phút nhé.',
+        emotion: 'confused',
+        quickReplies: intents.jobSearch.quickReplies,
+      }
+    }
+    const match = findMatchingJob(normalized, jobs)
+    if (match?.job) return { job: match.job, emotion: 'happy' }
+    if (match?.unavailable) {
+      return {
+        text: `Vị trí “${match.unavailable.title}” tại ${match.unavailable.company} hiện đã hết slot hoặc hết hạn nộp hồ sơ. Bạn thử vị trí khác nhé.`,
+        emotion: 'happy',
+        quickReplies: intents.jobSearch.quickReplies,
+      }
+    }
 
     const hasPositionTerms = normalized.split(' ').some((term) => !jobSearchStopWords.has(term))
     return {
@@ -196,7 +215,7 @@ function TypingIndicator() {
   )
 }
 
-function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
+function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () => {} }) {
   const shouldReduceMotion = useReducedMotion()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([welcomeMessage])
@@ -210,6 +229,7 @@ function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
   const replyTimerRef = useRef(null)
+  const liveJobsRef = useRef(null)
 
   const addMessage = (message) => {
     setMessages((current) => [...current, { ...message, id: `chat-${crypto.randomUUID()}` }])
@@ -227,22 +247,34 @@ function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
   useEffect(() => {
     if (!isOpen || !interactionVersion || notificationSent) return undefined
 
+    let cancelled = false
     const idleTimer = window.setTimeout(() => {
-      addMessage({
-        role: 'bot',
-        text: '🔔 Ting ting! Hệ thống vừa ghi nhận công ty Shopee đang tuyển Intern Marketing. Bạn có muốn xem không?',
-        companyNotification: true,
-      })
-      setNotificationSent(true)
+      loadLiveData()
+        .then((liveData) => {
+          const newest = newestOpenJob(liveData.jobs)
+          if (cancelled || !newest) return
+          liveJobsRef.current = liveData
+          addMessage({
+            role: 'bot',
+            text: `🔔 Ting ting! ${newest.company} vừa đăng tin tuyển ${newest.title}. Bạn có muốn xem không?`,
+            companyNotification: true,
+            notificationJob: newest,
+          })
+          setNotificationSent(true)
+        })
+        .catch(() => {})
     }, 10000)
 
-    return () => window.clearTimeout(idleTimer)
+    return () => {
+      cancelled = true
+      window.clearTimeout(idleTimer)
+    }
   }, [interactionVersion, isOpen, notificationSent])
 
-  const findCompany = (text) => companies.find((company) => {
+  const findCompany = (text, companies) => companies.find((company) => {
     const normalized = normalizeInput(text)
     return normalized.includes(company.name.toLocaleLowerCase('vi'))
-      || normalized.includes(company.id.split('-')[0])
+      || (company.hasPage && normalized.includes(company.id.split('-')[0]))
   })
 
   const sendMessage = (messageText = input, file = attachment) => {
@@ -260,13 +292,45 @@ function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
     setBotEmotion('thinking')
     setIsThinking(true)
 
-    const matchedCompany = findCompany(text)
-    const reply = matchedCompany ? null : getBotResponse(text)
-    replyTimerRef.current = window.setTimeout(() => {
+    // Tải dữ liệu mới nhất trong lúc "đang soạn tin" để câu trả lời luôn khớp slot và tin hiện tại.
+    const dataPromise = loadLiveData()
+      .then((liveData) => {
+        liveJobsRef.current = liveData
+        return liveData
+      })
+      .catch(() => liveJobsRef.current)
+    replyTimerRef.current = window.setTimeout(async () => {
+      const liveData = await dataPromise
+      const matchedCompany = liveData ? findCompany(text, buildCompanies(liveData)) : null
       if (matchedCompany) {
         addMessage({ role: 'bot', company: matchedCompany })
         setBotEmotion('happy')
       } else {
+        let reply = getBotResponse(text, liveData?.jobs ?? null)
+        if (reply.emotion === 'confused' && text) {
+          try {
+            const result = await requestApiJson('/api/chat', {
+              method: 'POST',
+              accessToken,
+              body: {
+                message: text,
+                history: messages
+                  .filter((messageItem) => ['user', 'bot'].includes(messageItem.role) && messageItem.text)
+                  .slice(-8)
+                  .map((messageItem) => ({
+                    role: messageItem.role === 'bot' ? 'assistant' : 'user',
+                    content: messageItem.text,
+                  })),
+              },
+            })
+            reply = { text: result.reply, emotion: 'happy' }
+          } catch (error) {
+            reply = {
+              text: error.message || 'Trợ lý AI đang tạm thời gián đoạn. Bạn hãy thử lại sau ít phút.',
+              emotion: 'confused',
+            }
+          }
+        }
         addMessage({ role: 'bot', ...reply })
         setBotEmotion(reply.emotion)
       }
@@ -283,11 +347,17 @@ function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
         ? { ...message, quickReplies: undefined, companyNotification: false }
         : message
     )))
-    if (reply.action === 'show-shopee') {
-      const shopee = companies.find((company) => company.id === 'shopee')
+    if (reply.action === 'show-job') {
       addMessage({ role: 'user', text: reply.label })
-      addMessage({ role: 'bot', company: shopee })
       setBotEmotion('happy')
+      loadLiveData()
+        .then((liveData) => {
+          liveJobsRef.current = liveData
+          const fresh = liveData.jobs.find((job) => job.id === reply.job.id)
+          if (fresh && isOpenJob(fresh)) addMessage({ role: 'bot', job: fresh })
+          else addMessage({ role: 'bot', text: 'Vị trí này vừa hết slot hoặc không còn tuyển. Bạn thử vị trí khác nhé.' })
+        })
+        .catch(() => addMessage({ role: 'bot', job: reply.job }))
       return
     }
     if (reply.action === 'dismiss-notification') {
@@ -373,7 +443,7 @@ function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
                     )}
                     {message.companyNotification && (
                       <div className="chatbot-quick-replies chatbot-notification-replies">
-                        <button type="button" onClick={() => handleQuickReply({ label: 'Xem ngay', action: 'show-shopee' }, message.id)}>
+                        <button type="button" onClick={() => handleQuickReply({ label: 'Xem ngay', action: 'show-job', job: message.notificationJob }, message.id)}>
                           Xem ngay <ArrowUp size={13} aria-hidden="true" />
                         </button>
                         <button type="button" onClick={() => handleQuickReply({ label: 'Để sau', action: 'dismiss-notification' }, message.id)}>

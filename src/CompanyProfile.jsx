@@ -1,11 +1,32 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft, Building2, Download, UsersRound, Check, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowLeft, Building2, BriefcaseBusiness, Download, UsersRound, Check, X } from 'lucide-react'
 import { apiRequest, downloadApiFile } from './api.js'
+import EmployerJobs from './EmployerJobs.jsx'
 
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
 const sizeOptions = ['Dưới 50 nhân viên', '50 – 200 nhân viên', '200 – 1000 nhân viên', 'Trên 1000 nhân viên']
+const industryOptions = [
+    'Công nghệ thông tin',
+    'Thương mại điện tử',
+    'Công nghệ tài chính',
+    'Marketing',
+    'Thiết kế sáng tạo',
+    'Tài chính - Kế toán',
+    'Kinh doanh',
+    'Nhân sự',
+    'Giáo dục',
+    'Sản xuất',
+    'Thực phẩm và đồ uống',
+]
+const locationOptions = [
+    'TP. Hồ Chí Minh',
+    'Hà Nội',
+    'Đà Nẵng',
+    'Cần Thơ',
+    'Làm việc từ xa',
+]
 
-function CompanyProfile({ token, onBack }) {
+function CompanyProfile({ token, onBack, initialTab = 'company' }) {
     const [company, setCompany] = useState(emptyCompany)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -13,9 +34,10 @@ function CompanyProfile({ token, onBack }) {
     const [success, setSuccess] = useState('')
     const [applications, setApplications] = useState([])
     const [applicationError, setApplicationError] = useState('')
-    const [applicationLoading, setApplicationLoading] = useState(false)
+    const [applicationNotice, setApplicationNotice] = useState(null)
+    const [applicationLoading, setApplicationLoading] = useState(initialTab === 'applications')
     const [busyApplicationId, setBusyApplicationId] = useState(null)
-    const [activeTab, setActiveTab] = useState('company')
+    const [activeTab, setActiveTab] = useState(initialTab)
 
     // Tải thông tin doanh nghiệp một lần khi mở trang
     useEffect(() => {
@@ -35,7 +57,7 @@ function CompanyProfile({ token, onBack }) {
         }
     }, [token])
 
-    const loadApplications = async () => {
+    const loadApplications = useCallback(async () => {
         setApplicationLoading(true)
         setApplicationError('')
         try {
@@ -46,19 +68,46 @@ function CompanyProfile({ token, onBack }) {
         } finally {
             setApplicationLoading(false)
         }
-    }
+    }, [token])
 
     useEffect(() => {
-        if (activeTab === 'applications') loadApplications()
-    }, [activeTab, token])
+        if (initialTab !== 'applications') return undefined
+        let cancelled = false
+        apiRequest('employer/applications', { token })
+            .then((result) => {
+                if (!cancelled) setApplications(result.applications || [])
+            })
+            .catch((loadError) => {
+                if (!cancelled) setApplicationError(loadError.message || 'Không thể tải danh sách ứng viên.')
+            })
+            .finally(() => {
+                if (!cancelled) setApplicationLoading(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [initialTab, token])
 
     const decideApplication = async (application, decisionStatus) => {
         setBusyApplicationId(application.id)
         setApplicationError('')
+        setApplicationNotice(null)
         try {
-            await apiRequest(`employer/applications/${application.id}/decision`, {
+            const result = await apiRequest(`employer/applications/${application.id}/decision`, {
                 method: 'PATCH', token, body: { decisionStatus },
             })
+            if (result.emailStatus === 'sent') {
+                setApplicationNotice({ message: 'Đã cập nhật kết quả và gửi email cho ứng viên.', isError: false })
+            } else if (result.emailStatus === 'logged') {
+                setApplicationNotice({ message: 'Đã cập nhật kết quả. SMTP chưa cấu hình nên email chỉ được ghi vào nhật ký.', isError: false })
+            } else if (result.emailStatus === 'failed') {
+                setApplicationNotice({
+                    message: result.emailError || 'Đã cập nhật kết quả nhưng không thể gửi email.',
+                    isError: true,
+                })
+            } else {
+                setApplicationNotice({ message: result.message, isError: false })
+            }
             await loadApplications()
         } catch (updateError) {
             setApplicationError(updateError.message || 'Không thể cập nhật kết quả.')
@@ -111,15 +160,23 @@ function CompanyProfile({ token, onBack }) {
 
                 <div className="company-tabs" role="tablist" aria-label="Quản lý doanh nghiệp">
                     <button type="button" className={`company-tab${activeTab === 'company' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('company')}><Building2 size={16} /> Thông tin doanh nghiệp</button>
-                    <button type="button" className={`company-tab${activeTab === 'applications' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('applications')}><UsersRound size={16} /> Danh sách ứng viên</button>
+                    <button type="button" className={`company-tab${activeTab === 'jobs' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('jobs')}><BriefcaseBusiness size={16} /> Tin tuyển dụng</button>
+                    <button type="button" className={`company-tab${activeTab === 'applications' ? ' company-tab-active' : ''}`} onClick={() => { setActiveTab('applications'); loadApplications() }}><UsersRound size={16} /> Danh sách ứng viên</button>
                 </div>
-                {activeTab === 'applications' ? (
+                {activeTab === 'jobs' ? (
+                    <EmployerJobs token={token} />
+                ) : activeTab === 'applications' ? (
                     <section className="company-card company-applications">
                         <div className="company-card-heading">
                             <span className="company-card-icon"><UsersRound size={20} /></span>
                             <div><h1>Danh sách ứng viên</h1><p>Xem hồ sơ, tải CV và cập nhật kết quả tuyển dụng.</p></div>
                         </div>
                         {applicationError && <div className="form-api-error" role="alert">{applicationError}</div>}
+                        {applicationNotice && (
+                            <div className={applicationNotice.isError ? 'form-api-error' : 'form-api-success'} role={applicationNotice.isError ? 'alert' : 'status'}>
+                                {applicationNotice.message}
+                            </div>
+                        )}
                         {applicationLoading ? <p>Đang tải danh sách ứng viên...</p> : applications.length === 0 ? (
                             <div className="support-empty">Chưa có ứng viên cho doanh nghiệp này. Hãy kiểm tra tên doanh nghiệp trong hồ sơ có trùng với tên công ty của tin tuyển dụng.</div>
                         ) : (
@@ -173,7 +230,15 @@ function CompanyProfile({ token, onBack }) {
                             <div className="company-row">
                                 <div className="company-field">
                                     <label htmlFor="company-industry">Lĩnh vực hoạt động</label>
-                                    <input id="company-industry" name="industry" value={company.industry} onChange={handleChange} maxLength={80} placeholder="Công nghệ thông tin" />
+                                    <select id="company-industry" name="industry" value={company.industry} onChange={handleChange}>
+                                        <option value="">Chọn lĩnh vực</option>
+                                        {company.industry && !industryOptions.includes(company.industry) && (
+                                            <option value={company.industry}>{company.industry}</option>
+                                        )}
+                                        {industryOptions.map((option) => (
+                                            <option key={option} value={option}>{option}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div className="company-field">
                                     <label htmlFor="company-size">Quy mô</label>
@@ -188,7 +253,20 @@ function CompanyProfile({ token, onBack }) {
 
                             <div className="company-field">
                                 <label htmlFor="company-address">Địa chỉ</label>
-                                <input id="company-address" name="address" value={company.address} onChange={handleChange} maxLength={200} placeholder="Số nhà, đường, quận/huyện, tỉnh/thành" />
+                                <input
+                                    id="company-address"
+                                    name="address"
+                                    list="company-location-options"
+                                    value={company.address}
+                                    onChange={handleChange}
+                                    maxLength={200}
+                                    placeholder="Chọn hoặc nhập địa điểm"
+                                />
+                                <datalist id="company-location-options">
+                                    {locationOptions.map((option) => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </datalist>
                             </div>
 
                             <div className="company-field">

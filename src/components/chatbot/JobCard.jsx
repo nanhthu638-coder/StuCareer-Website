@@ -22,6 +22,7 @@ function JobCard({ job, onApply }) {
       <div className="chat-job-meta">
         <span><MapPin size={13} aria-hidden="true" />{job.location}</span>
         <strong>{job.salary}</strong>
+        {Number.isFinite(job.remaining) && <span className="chat-job-slots">Còn {job.remaining}/{job.slots} slot</span>}
       </div>
       <button className="chat-job-apply" type="button" onClick={() => onApply(job)}>
         Ứng tuyển <ArrowUpRight size={14} aria-hidden="true" />

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { requestApiJson } from './api.js'
 
-function ContactForm({ onSubmitted }) {
+function ContactForm({ currentUser, onSubmitted }) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -16,9 +16,12 @@ function ContactForm({ onSubmitted }) {
       await requestApiJson('/api/contact', {
         method: 'POST',
         body: Object.fromEntries(formData.entries()),
+        accessToken: currentUser?.accessToken,
       })
       form.reset()
-      onSubmitted('Biểu mẫu của bạn đã được gửi.')
+      onSubmitted(currentUser
+        ? 'Biểu mẫu của bạn đã được gửi. Bạn sẽ nhận thông báo khi thắc mắc được xử lý.'
+        : 'Biểu mẫu của bạn đã được gửi.')
     } catch (submitError) {
       setError(submitError.message || 'Không thể gửi biểu mẫu. Vui lòng thử lại.')
     } finally {
@@ -27,15 +30,15 @@ function ContactForm({ onSubmitted }) {
   }
 
   return (
-    <form className="contact-form" onSubmit={handleSubmit}>
+    <form className="contact-form" key={currentUser?.id ?? 'guest'} onSubmit={handleSubmit}>
       <div className="contact-form-fields">
         <label>
           <span>Họ và tên</span>
-          <input name="name" type="text" autoComplete="name" minLength="2" maxLength="80" required />
+          <input name="name" type="text" autoComplete="name" minLength="2" maxLength="80" defaultValue={currentUser?.name ?? ''} required />
         </label>
         <label>
           <span>Email</span>
-          <input name="email" type="email" autoComplete="email" maxLength="254" required />
+          <input name="email" type="email" autoComplete="email" maxLength="254" defaultValue={currentUser?.email ?? ''} required />
         </label>
         <label className="contact-form-subject">
           <span>Chủ đề</span>

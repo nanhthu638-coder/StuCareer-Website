@@ -59,6 +59,16 @@ function initializeSqlite() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `)
+  for (const [column, definition] of [
+    ['user_id', 'INTEGER'],
+    ['resolution_note', 'TEXT'],
+    ['resolved_at', 'TEXT'],
+    ['user_seen', 'INTEGER NOT NULL DEFAULT 0'],
+  ]) {
+    if (!sqliteDatabase.pragma('table_info(contact_requests)').some((item) => item.name === column)) {
+      sqliteDatabase.exec(`ALTER TABLE contact_requests ADD COLUMN ${column} ${definition}`)
+    }
+  }
   sqliteDatabase.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,29 +81,29 @@ function initializeSqlite() {
       category TEXT NOT NULL,
       tone TEXT NOT NULL DEFAULT 'momo',
       logo TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        requirements TEXT NOT NULL DEFAULT '[]',
-        benefits TEXT NOT NULL DEFAULT '[]',
-        slots INTEGER NOT NULL DEFAULT 1,
-        deadline TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      requirements TEXT NOT NULL DEFAULT '[]',
+      benefits TEXT NOT NULL DEFAULT '[]',
+      slots INTEGER NOT NULL DEFAULT 1,
+      deadline TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `)
-    for (const [column, definition] of [
-        ['status', `TEXT NOT NULL DEFAULT 'pending'`],
-        ['review_note', 'TEXT'],
-        ['reviewed_at', 'TEXT'],
-          ['description', `TEXT NOT NULL DEFAULT ''`],
-          ['requirements', `TEXT NOT NULL DEFAULT '[]'`],
-          ['benefits', `TEXT NOT NULL DEFAULT '[]'`],
-          ['slots', 'INTEGER NOT NULL DEFAULT 1'],
-          ['deadline', 'TEXT'],
-    ]) {
-        if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
-            sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
-        }
+  for (const [column, definition] of [
+    ['status', `TEXT NOT NULL DEFAULT 'pending'`],
+    ['review_note', 'TEXT'],
+    ['reviewed_at', 'TEXT'],
+    ['description', `TEXT NOT NULL DEFAULT ''`],
+    ['requirements', `TEXT NOT NULL DEFAULT '[]'`],
+    ['benefits', `TEXT NOT NULL DEFAULT '[]'`],
+    ['slots', 'INTEGER NOT NULL DEFAULT 1'],
+    ['deadline', 'TEXT'],
+  ]) {
+    if (!sqliteDatabase.pragma('table_info(jobs)').some((item) => item.name === column)) {
+      sqliteDatabase.exec(`ALTER TABLE jobs ADD COLUMN ${column} ${definition}`)
     }
-    sqliteDatabase.exec(`
+  }
+  sqliteDatabase.exec(`
     CREATE TABLE IF NOT EXISTS email_outbox (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       to_email TEXT NOT NULL,
@@ -133,6 +143,9 @@ function initializeSqlite() {
   `)
   if (!sqliteDatabase.pragma('table_info(applications)').some((item) => item.name === 'decision_status')) {
     sqliteDatabase.exec("ALTER TABLE applications ADD COLUMN decision_status TEXT NOT NULL DEFAULT 'pending'")
+  }
+  if (!sqliteDatabase.pragma('table_info(applications)').some((item) => item.name === 'employer_seen')) {
+    sqliteDatabase.exec("ALTER TABLE applications ADD COLUMN employer_seen INTEGER NOT NULL DEFAULT 0")
   }
   sqliteDatabase.exec(`
     CREATE TABLE IF NOT EXISTS bookmarks (
@@ -237,6 +250,12 @@ export async function ensureSqlServerSchema(pool) {
        created_at DATETIME2 NOT NULL CONSTRAINT DF_contact_requests_created_at DEFAULT SYSUTCDATETIME(),
        updated_at DATETIME2 NOT NULL CONSTRAINT DF_contact_requests_updated_at DEFAULT SYSUTCDATETIME()
      )`,
+    ...[
+      ['user_id', 'INT NULL'],
+      ['resolution_note', 'NVARCHAR(1000) NULL'],
+      ['resolved_at', 'DATETIME2 NULL'],
+      ['user_seen', 'INT NOT NULL CONSTRAINT DF_contact_requests_user_seen DEFAULT 0'],
+    ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.contact_requests', N'${column}') IS NULL ALTER TABLE dbo.contact_requests ADD ${column} ${definition}`),
     `IF OBJECT_ID(N'dbo.jobs', N'U') IS NULL
      CREATE TABLE dbo.jobs (
        id INT IDENTITY(1,1) PRIMARY KEY,
@@ -255,17 +274,18 @@ export async function ensureSqlServerSchema(pool) {
        slots INT NOT NULL CONSTRAINT DF_jobs_slots DEFAULT 1,
        deadline NVARCHAR(20) NULL,
        created_at DATETIME2 NOT NULL CONSTRAINT DF_jobs_created_at DEFAULT SYSUTCDATETIME()
-     )`, [
-          ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
-          ['review_note', 'NVARCHAR(500) NULL'],
-          ['reviewed_at', 'DATETIME2 NULL'],
-          ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
-          ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
-          ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
-          ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
-          ['deadline', 'NVARCHAR(20) NULL'],
-      ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
-      `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
+     )`,
+    ...[
+      ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
+      ['review_note', 'NVARCHAR(500) NULL'],
+      ['reviewed_at', 'DATETIME2 NULL'],
+      ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
+      ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
+      ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
+      ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
+      ['deadline', 'NVARCHAR(20) NULL'],
+    ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
+    `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
      CREATE TABLE dbo.email_outbox (
        id INT IDENTITY(1,1) PRIMARY KEY,
        to_email NVARCHAR(254) NOT NULL,
@@ -290,6 +310,8 @@ export async function ensureSqlServerSchema(pool) {
      )`,
     `IF COL_LENGTH(N'dbo.applications', N'decision_status') IS NULL
        ALTER TABLE dbo.applications ADD decision_status NVARCHAR(20) NOT NULL CONSTRAINT DF_applications_decision_status DEFAULT 'pending'`,
+    `IF COL_LENGTH(N'dbo.applications', N'employer_seen') IS NULL
+       ALTER TABLE dbo.applications ADD employer_seen INT NOT NULL CONSTRAINT DF_applications_employer_seen DEFAULT 0`,
     `IF OBJECT_ID(N'dbo.bookmarks', N'U') IS NULL
      CREATE TABLE dbo.bookmarks (
        id INT IDENTITY(1,1) PRIMARY KEY,

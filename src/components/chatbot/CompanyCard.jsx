@@ -27,14 +27,20 @@ function CompanyCard({ company, onViewCompany }) {
 
       <div className="chat-company-jobs">
         <span><BriefcaseBusiness size={14} aria-hidden="true" /> Đang tuyển</span>
-        <ul>
-          {company.openJobs.map((job) => <li key={job}>{job}</li>)}
-        </ul>
+        {company.openJobs.length > 0 ? (
+          <ul>
+            {company.openJobs.map((job, index) => <li key={`${job}-${index}`}>{job}</li>)}
+          </ul>
+        ) : (
+          <ul><li>Hiện chưa có vị trí nào còn slot.</li></ul>
+        )}
       </div>
 
-      <button className="chat-company-link" type="button" onClick={() => onViewCompany(company)}>
-        Xem trang công ty <ArrowUpRight size={15} aria-hidden="true" />
-      </button>
+      {company.hasPage !== false && (
+        <button className="chat-company-link" type="button" onClick={() => onViewCompany(company)}>
+          Xem trang công ty <ArrowUpRight size={15} aria-hidden="true" />
+        </button>
+      )}
     </motion.article>
   )
 }

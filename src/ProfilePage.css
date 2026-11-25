@@ -20,6 +20,10 @@
   font-weight: 700;
 }
 
+.profile-edit-form .profile-field > label {
+  display: block;
+}
+
 .profile-field b {
   color: #e05b42;
 }

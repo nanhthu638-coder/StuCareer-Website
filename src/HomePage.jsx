@@ -18,8 +18,19 @@ import {
   UsersRound,
 } from 'lucide-react'
 import JobHero from './JobHero.jsx'
+import Reveal from './Reveal.jsx'
 import { requestApiJson } from './api.js'
 import { toJobViewModel } from './jobViewModel.js'
+
+const companyWordmarks = [
+  { label: 'momo', className: 'wordmark-momo' },
+  { label: 'Shopee', className: 'wordmark-shopee' },
+  { label: 'VNG', className: 'wordmark-vng' },
+  { label: 'FPT', className: 'wordmark-fpt' },
+  { label: 'tiki', className: 'wordmark-tiki' },
+]
+// Mỗi nhóm lặp danh sách hai lần để đủ rộng; hai nhóm giống hệt nhau nên cuộn -50% là khớp vòng lặp liền mạch.
+const marqueeItems = [...companyWordmarks, ...companyWordmarks]
 
 const categories = [
   { name: 'Công nghệ thông tin', icon: Code2, tone: 'mint' },
@@ -79,24 +90,24 @@ function HomePage({ onViewJob }) {
 
       <section className="section categories-section" id="categories">
         <div className="page-shell">
-          <div className="section-heading">
+          <Reveal className="section-heading">
             <div>
               <div className="section-kicker">TÌM CƠ HỘI CỦA BẠN</div>
               <h2>Ngành nghề nổi bật</h2>
               <p>Chọn lĩnh vực bạn yêu thích, bắt đầu hành trình của riêng mình.</p>
             </div>
             <span className="text-link">Khám phá tất cả <ArrowRight size={16} /></span>
-          </div>
+          </Reveal>
           <div className="category-grid">
-            {categories.map(({ name, icon: Icon, tone }) => {
+            {categories.map(({ name, icon: Icon, tone }, index) => {
               const count = availableJobs.filter((job) => normalizeSearchText(job.category) === normalizeSearchText(name)).length
               return (
-                <button className="category-card" key={name} type="button">
+                <Reveal as="button" className="category-card" key={name} type="button" delay={(index % 4) * 70}>
                   <span className={`category-icon category-${tone}`}><Icon size={22} strokeWidth={1.9} /></span>
                   <span className="category-title">{name}</span>
                   <span className="category-count">{count} việc làm</span>
                   <ArrowUpRight className="category-arrow" size={17} />
-                </button>
+                </Reveal>
               )
             })}
           </div>
@@ -107,27 +118,31 @@ function HomePage({ onViewJob }) {
         <div className="page-shell company-strip-inner">
           <span className="company-strip-label">CƠ HỘI TỪ NHỮNG DOANH NGHIỆP HÀNG ĐẦU</span>
           <div className="company-strip-list">
-            <span className="company-wordmark wordmark-momo">momo</span>
-            <span className="company-wordmark wordmark-shopee">Shopee</span>
-            <span className="company-wordmark wordmark-vng">VNG</span>
-            <span className="company-wordmark wordmark-fpt">FPT</span>
-            <span className="company-wordmark wordmark-tiki">tiki</span>
+            <div className="company-marquee-track">
+              {[0, 1].map((group) => (
+                <div className="company-marquee-group" key={group} aria-hidden={group === 1 ? 'true' : undefined}>
+                  {marqueeItems.map((item, index) => (
+                    <span className={`company-wordmark ${item.className}`} key={`${item.label}-${index}`}>{item.label}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       <section className="section jobs-section" id="jobs">
         <div className="page-shell">
-          <div className="section-heading jobs-heading">
+          <Reveal className="section-heading jobs-heading">
             <div>
               <div className="section-kicker">CƠ HỘI MỚI MỖI NGÀY</div>
               <h2>{hasFilters ? 'Kết quả tìm kiếm' : 'Việc làm mới nhất'}</h2>
               <p>{hasFilters ? `${filteredJobs.length} việc làm phù hợp với tiêu chí của bạn.` : 'Cơ hội tốt đang chờ bạn — ứng tuyển ngay hôm nay.'}</p>
             </div>
-          </div>
+          </Reveal>
           <div className="jobs-grid">
-            {filteredJobs.map((job) => (
-                <article className="job-card" key={job.id}>
+            {filteredJobs.map((job, index) => (
+                <Reveal as="article" className="job-card" key={job.id} delay={(index % 3) * 80}>
                     <div className="job-card-top">
                         <div className={`company-logo logo-${job.tone}`}>{job.logo}</div>
                         <button
@@ -155,7 +170,7 @@ function HomePage({ onViewJob }) {
                             Xem chi tiết <ArrowRight size={14} />
                         </button>
                     </div>
-                </article>
+                </Reveal>
             ))}
           </div>
           {jobsLoadError && <p className="field-error" role="alert">{jobsLoadError}</p>}
@@ -170,7 +185,7 @@ function HomePage({ onViewJob }) {
       </section>
 
       <section className="cta-section">
-        <div className="page-shell cta-inner">
+        <Reveal className="page-shell cta-inner">
           <div className="cta-decoration">✳</div>
           <div className="cta-icon"><BriefcaseBusiness size={21} /></div>
           <div className="cta-copy">
@@ -179,7 +194,7 @@ function HomePage({ onViewJob }) {
             <p>Kết nối với hàng ngàn sinh viên sẵn sàng tạo nên khác biệt.</p>
           </div>
           <span className="cta-button">Đăng tin tuyển dụng <ArrowRight size={16} /></span>
-        </div>
+        </Reveal>
       </section>
     </main>
   )

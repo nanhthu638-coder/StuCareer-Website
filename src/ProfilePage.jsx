@@ -103,9 +103,18 @@ function ProfilePage({ accessToken, onBack, onProfileSaved, onNotice }) {
   const addSkill = (value = skillDraft) => {
     const skill = value.trim()
     if (!skill) return
+    if (skill.length < 2) {
+      setFieldErrors((current) => ({ ...current, skills: 'Kỹ năng phải có ít nhất 2 ký tự.' }))
+      return
+    }
+    if (!/[\p{L}\p{N}]/u.test(skill)) {
+      setFieldErrors((current) => ({ ...current, skills: 'Kỹ năng phải chứa chữ hoặc số.' }))
+      return
+    }
     if (skillTags.some((tag) => tag.toLocaleLowerCase('vi') === skill.toLocaleLowerCase('vi'))) {
       setSkillDraft('')
       setSkillSuggestionsOpen(false)
+      setFieldErrors((current) => ({ ...current, skills: '' }))
       return
     }
     if (`${skillTags.join(', ')}${skillTags.length ? ', ' : ''}${skill}`.length > 300) {
