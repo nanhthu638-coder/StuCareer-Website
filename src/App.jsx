@@ -225,6 +225,7 @@ function App() {
   const [profileVersion, setProfileVersion] = useState(0)
   const [companyTab, setCompanyTab] = useState('company')
   const navigationTimer = useRef(null)
+  const pendingSection = useRef(null)
 
   useEffect(() => () => window.clearTimeout(navigationTimer.current), [])
 
@@ -247,7 +248,27 @@ function App() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' })
+    if (page !== 'home' || !pendingSection.current) return
+    const sectionId = pendingSection.current
+    pendingSection.current = null
+    window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      })
+    })
   }, [page])
+
+  const navigateToSection = (sectionId) => {
+    setMenuOpen(false)
+    if (page !== 'home') {
+      pendingSection.current = sectionId
+      navigateTo('home')
+      return
+    }
+    document.getElementById(sectionId)?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    })
+  }
 
   const openAuth = (mode = 'login') => {
     navigateTo(mode)
@@ -422,13 +443,22 @@ function App() {
             </button>
 
             <nav className={`main-nav${menuOpen ? ' main-nav-open' : ''}`} aria-label="Điều hướng chính">
-              <a className="nav-active" href="#home" onClick={() => {
-                if (page !== 'home') navigateTo('home')
-                setMenuOpen(false)
+              <a className="nav-active" href="#home" onClick={(event) => {
+                event.preventDefault()
+                navigateToSection('home')
               }}>Trang chủ</a>
-              <span className="nav-inactive" aria-disabled="true">Việc làm</span>
-              <span className="nav-inactive" aria-disabled="true">Công ty</span>
-              <a href="#contact" onClick={() => setMenuOpen(false)}>Liên hệ</a>
+              <a href="#jobs" onClick={(event) => {
+                event.preventDefault()
+                navigateToSection('jobs')
+              }}>Việc làm</a>
+              <a href="#companies" onClick={(event) => {
+                event.preventDefault()
+                navigateToSection('companies')
+              }}>Công ty</a>
+              <a href="#contact" onClick={(event) => {
+                event.preventDefault()
+                navigateToSection('contact')
+              }}>Liên hệ</a>
               {currentUser ? (
                 <>
                   <AccountControls
