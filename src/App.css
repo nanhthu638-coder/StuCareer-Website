@@ -4552,6 +4552,7 @@ select:focus-visible {
 .company-applicant-actions{display:flex;gap:9px;flex-wrap:wrap}
 .company-applicant-actions .button{display:inline-flex;align-items:center;gap:7px}
 .job-bookmark-button{display:inline-flex;align-items:center;gap:8px;margin:0 0 20px}
+.job-edit-button{display:inline-flex;align-items:center;gap:8px;margin:16px 0 0 auto}
 .company-applications{width:100%}
 .company-jobs{width:100%}
 .company-jobs .company-actions{margin:0 0 16px}
@@ -4560,4 +4561,4 @@ select:focus-visible {
 .company-job-form-actions{display:flex;gap:10px;flex-wrap:wrap}
 .admin-sections{margin-bottom:18px}
 .admin-actions .admin-note-input{min-width:260px}
-@media(max-width:640px){.company-applicant-heading{flex-direction:column}.company-applicant-actions .button{width:100%;justify-content:center}}
+@media(max-width:640px){.company-applicant-heading{flex-direction:column}.company-applicant-actions .button{width:100%;justify-content:center}.job-edit-button{margin-left:0}}

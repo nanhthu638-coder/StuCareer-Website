@@ -12,6 +12,11 @@ export function toJobViewModel(job) {
   const salaryMin = salaryMinValue == null ? null : Number(salaryMinValue)
   const salaryMax = salaryMaxValue == null ? null : Number(salaryMaxValue)
   const createdAt = job.created_at ?? job.createdAt
+  const createdAtDate = createdAt instanceof Date
+    ? createdAt
+    : createdAt
+      ? new Date(/(?:Z|[+-]\d{2}:\d{2})$/i.test(createdAt) ? createdAt : `${createdAt.replace(' ', 'T')}Z`)
+      : null
 
   return {
     ...job,
@@ -21,7 +26,9 @@ export function toJobViewModel(job) {
     salary: salaryMin === null || salaryMax === null
       ? 'Thỏa thuận'
       : `${salaryMin} – ${salaryMax} triệu / tháng`,
-    posted: createdAt ? `Đăng ngày ${new Date(`${createdAt.replace(' ', 'T')}Z`).toLocaleDateString('vi-VN')}` : 'Mới đăng',
+    posted: createdAtDate
+      ? `Đăng ngày ${Number.isNaN(createdAtDate.getTime()) ? String(createdAt) : createdAtDate.toLocaleDateString('vi-VN')}`
+      : 'Mới đăng',
     slots: Number(job.slots),
     description: job.description ?? '',
     requirements: parseJobList(job.requirements),

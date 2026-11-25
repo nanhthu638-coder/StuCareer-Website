@@ -1162,10 +1162,19 @@ app.put('/api/employer/jobs/:id', authenticateRequest, requireEmployer, async (r
       job.title, job.location, job.salaryMin, job.salaryMax, job.type, job.category,
       job.description, JSON.stringify(job.requirements), JSON.stringify(job.benefits), job.slots, job.deadline, id,
     ], transaction)
-    return { status: 200 }
+    const updatedJob = await get(`
+      SELECT id, title, company, location, salary_min, salary_max, type, category, tone, logo,
+             description, requirements, benefits, slots, deadline, created_at, status
+      FROM jobs
+      WHERE id = ?
+    `, [id], transaction)
+    return { status: 200, job: updatedJob }
   }, { immediate: true })
   if (result.error) return response.status(result.status).json({ error: result.error })
-  return response.json({ message: 'Đã lưu thay đổi. Tin được gửi lại để quản trị viên duyệt.' })
+  return response.json({
+    message: 'Đã lưu thay đổi. Tin được gửi lại để quản trị viên duyệt.',
+    job: result.job,
+  })
 })
 
 app.patch('/api/employer/jobs/:id/status', authenticateRequest, requireEmployer, async (request, response) => {
