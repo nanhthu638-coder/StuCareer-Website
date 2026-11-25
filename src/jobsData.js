@@ -1,3 +1,25 @@
+/**
+ * @typedef {object} Job
+ * @property {number} id
+ * @property {string} title
+ * @property {string} company
+ * @property {string} logo
+ * @property {string} tone
+ * @property {string} location
+ * @property {string} salary
+ * @property {number} salaryMin
+ * @property {number} salaryMax
+ * @property {string} type
+ * @property {string} category
+ * @property {string} posted
+ * @property {number} slots
+ * @property {string} deadline
+ * @property {string} description
+ * @property {string[]} requirements
+ * @property {string[]} benefits
+ */
+
+/** @type {Job[]} */
 export const jobs = [
     {
         id: 1,
@@ -280,5 +302,7 @@ export const jobs = [
 
 // tìm 1 công việc theo id. ko thấy thì trả về undefined.
 export function getJobById(id) {
-    return jobs.find((job) => job.id === id)
+    const numericId = Number(id)
+    if (!Number.isSafeInteger(numericId) || numericId < 1) return undefined
+    return jobs.find((job) => job.id === numericId)
 }
