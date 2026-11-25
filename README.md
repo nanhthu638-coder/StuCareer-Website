@@ -11,6 +11,7 @@
 
 ## Khởi chạy
 
+## 4. Khởi chạy
 ```bash
 npm install
 npm run dev

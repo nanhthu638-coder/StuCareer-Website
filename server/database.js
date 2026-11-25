@@ -274,6 +274,25 @@ export async function ensureSqlServerSchema(pool) {
        slots INT NOT NULL CONSTRAINT DF_jobs_slots DEFAULT 1,
        deadline NVARCHAR(20) NULL,
        created_at DATETIME2 NOT NULL CONSTRAINT DF_jobs_created_at DEFAULT SYSUTCDATETIME()
+     )`, [
+          ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
+          ['review_note', 'NVARCHAR(500) NULL'],
+          ['reviewed_at', 'DATETIME2 NULL'],
+          ['description', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_description_migration DEFAULT ''`],
+          ['requirements', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_requirements_migration DEFAULT '[]'`],
+          ['benefits', `NVARCHAR(MAX) NOT NULL CONSTRAINT DF_jobs_benefits_migration DEFAULT '[]'`],
+          ['slots', 'INT NOT NULL CONSTRAINT DF_jobs_slots_migration DEFAULT 1'],
+          ['deadline', 'NVARCHAR(20) NULL'],
+      ].map(([column, definition]) => `IF COL_LENGTH(N'dbo.jobs', N'${column}') IS NULL ALTER TABLE dbo.jobs ADD ${column} ${definition}`),
+      `IF OBJECT_ID(N'dbo.email_outbox', N'U') IS NULL
+     CREATE TABLE dbo.email_outbox (
+       id INT IDENTITY(1,1) PRIMARY KEY,
+       to_email NVARCHAR(254) NOT NULL,
+       subject NVARCHAR(200) NOT NULL,
+       body NVARCHAR(MAX) NOT NULL,
+       status NVARCHAR(20) NOT NULL,
+       error NVARCHAR(500) NULL,
+       created_at DATETIME2 NOT NULL CONSTRAINT DF_email_outbox_created_at DEFAULT SYSUTCDATETIME()
      )`,
     ...[
       ['status', `NVARCHAR(20) NOT NULL CONSTRAINT DF_jobs_status DEFAULT 'pending'`],
