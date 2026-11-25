@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, BriefcaseBusiness, RefreshCw } from 'lucide-react'
 import { requestApiJson } from './api.js'
+import AdminContactRequests from './AdminContactRequests.jsx'
 
 const statusLabels = {
     pending: 'Chờ duyệt',
@@ -36,6 +37,8 @@ function AdminDashboard({ accessToken, onHome, onLogout }) {
     const [jobs, setJobs] = useState([])
     const [transitions, setTransitions] = useState({})
     const [emails, setEmails] = useState([])
+    const [contacts, setContacts] = useState([])
+    const [section, setSection] = useState('jobs')
     const [notes, setNotes] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -48,12 +51,14 @@ function AdminDashboard({ accessToken, onHome, onLogout }) {
         Promise.all([
             requestApiJson(`/api/admin/jobs${query}`, { accessToken }),
             requestApiJson('/api/admin/emails', { accessToken }),
+            requestApiJson('/api/admin/contact-requests', { accessToken }),
         ])
-            .then(([jobResult, emailResult]) => {
+            .then(([jobResult, emailResult, contactResult]) => {
                 if (!active) return
                 setJobs(jobResult.jobs)
                 setTransitions(jobResult.allowedTransitions)
                 setEmails(emailResult.emails)
+                setContacts(contactResult.requests)
             })
             .catch((loadError) => {
                 if (active) setError(loadError.message || 'Không thể tải dữ liệu quản trị.')
@@ -94,6 +99,8 @@ function AdminDashboard({ accessToken, onHome, onLogout }) {
         }
     }
 
+    const newContactCount = contacts.filter((request) => request.status === 'new').length
+
     return (
         <div className="support-page">
             <header className="site-header">
@@ -110,6 +117,22 @@ function AdminDashboard({ accessToken, onHome, onLogout }) {
             </header>
             <main className="page-shell support-main">
                 <button className="support-back" type="button" onClick={onHome}><ArrowLeft size={16} /> Về trang chủ</button>
+                <div className="admin-tabs admin-sections">
+                    <button type="button" className={`admin-tab${section === 'jobs' ? ' admin-tab-active' : ''}`} onClick={() => setSection('jobs')}>Tin tuyển dụng</button>
+                    <button type="button" className={`admin-tab${section === 'contacts' ? ' admin-tab-active' : ''}`} onClick={() => setSection('contacts')}>
+                        Biểu mẫu thắc mắc{newContactCount > 0 ? ` (${newContactCount} mới)` : ''}
+                    </button>
+                </div>
+                {section === 'contacts' ? (
+                    <>
+                        {error && <div className="support-error" role="alert">{error}</div>}
+                        {loading && contacts.length === 0 ? (
+                            <div className="support-empty">Đang tải...</div>
+                        ) : (
+                            <AdminContactRequests accessToken={accessToken} requests={contacts} onChanged={reload} />
+                        )}
+                    </>
+                ) : (<>
                 <div className="support-heading">
                     <div>
                         <span className="support-eyebrow">QUẢN TRỊ TIN TUYỂN DỤNG</span>
@@ -203,6 +226,7 @@ function AdminDashboard({ accessToken, onHome, onLogout }) {
                         ))}
                     </div>
                 )}
+                </>)}
             </main>
         </div>
     )

@@ -18,7 +18,10 @@ const tables = [
   },
   {
     name: 'contact_requests',
-    columns: ['id', 'name', 'email', 'subject', 'message', 'status', 'assigned_role', 'created_at', 'updated_at'],
+    columns: [
+      'id', 'name', 'email', 'subject', 'message', 'status', 'assigned_role', 'created_at', 'updated_at',
+      'user_id', 'resolution_note', 'resolved_at', 'user_seen',
+    ],
   },
   {
     name: 'jobs',
@@ -36,7 +39,7 @@ const tables = [
     name: 'applications',
     columns: [
       'id', 'user_id', 'job_id', 'cover_letter', 'cv_path', 'cv_original_name',
-      'status', 'decision_status', 'created_at',
+      'status', 'decision_status', 'employer_seen', 'created_at',
     ],
   },
   {
@@ -65,25 +68,24 @@ async function countRows(pool, tableName) {
   return Number(result.recordset[0].row_count)
 }
 
+// IDENTITY_INSERT chỉ có hiệu lực trong phạm vi session/batch đang chạy, nên ON, INSERT và OFF
+// phải nằm trong cùng một batch (một request) thì lệnh INSERT mới thấy được trạng thái ON.
 async function insertRows(transaction, table, sourceTable) {
   const { columns, rows } = sourceTable
   if (rows.length === 0) return
-  await new sql.Request(transaction).query(`SET IDENTITY_INSERT dbo.${table.name} ON`)
-  try {
-    for (const row of rows) {
-      const request = new sql.Request(transaction)
-      const placeholders = columns.map((column, index) => {
-        request.input(`p${index}`, column === 'role' && row[column] === 'student' ? 'seeker' : (row[column] ?? null))
-        return `@p${index}`
-      })
-      const columnList = columns.map((column) => `[${column}]`).join(', ')
-      await request.query(`
-        INSERT INTO dbo.${table.name} (${columnList})
-        VALUES (${placeholders.join(', ')})
-      `)
-    }
-  } finally {
-    await new sql.Request(transaction).query(`SET IDENTITY_INSERT dbo.${table.name} OFF`)
+  const columnList = columns.map((column) => `[${column}]`).join(', ')
+  for (const row of rows) {
+    const request = new sql.Request(transaction)
+    const placeholders = columns.map((column, index) => {
+      request.input(`p${index}`, column === 'role' && row[column] === 'student' ? 'seeker' : (row[column] ?? null))
+      return `@p${index}`
+    })
+    await request.query(`
+      SET IDENTITY_INSERT dbo.${table.name} ON;
+      INSERT INTO dbo.${table.name} (${columnList})
+      VALUES (${placeholders.join(', ')});
+      SET IDENTITY_INSERT dbo.${table.name} OFF;
+    `)
   }
 }
 

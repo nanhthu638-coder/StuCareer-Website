@@ -50,7 +50,7 @@ const companyProfiles = {
   'Cà Phê Việt': { industry: 'Thực phẩm và đồ uống', tone: '#15803d' },
 }
 
-function toSlug(value) {
+export function toSlug(value) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -59,7 +59,7 @@ function toSlug(value) {
     .replace(/^-|-$/g, '')
 }
 
-function createLogo(name, color) {
+export function createLogo(name, color) {
   const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="${color}"/><text x="48" y="58" fill="white" font-family="Arial,sans-serif" font-size="32" font-weight="700" text-anchor="middle">${initials}</text></svg>`
   return `data:image/svg+xml,${encodeURIComponent(svg)}`

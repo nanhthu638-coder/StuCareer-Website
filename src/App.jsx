@@ -223,6 +223,7 @@ function App() {
   const [notice, setNotice] = useState('')
   const [applicationsVersion, setApplicationsVersion] = useState(0)
   const [profileVersion, setProfileVersion] = useState(0)
+  const [companyTab, setCompanyTab] = useState('company')
   const navigationTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(navigationTimer.current), [])
@@ -280,8 +281,9 @@ function App() {
     setMenuOpen(false)
   }
 
-  const openCompany = () => {
+  const openCompany = (tab = 'company') => {
     if (currentUser?.role !== 'employer') return
+    setCompanyTab(tab)
     navigateTo('company')
     setMenuOpen(false)
   }
@@ -381,7 +383,14 @@ function App() {
         />
       )
     } else if (page === 'company' && currentUser?.role === 'employer') {
-      mainContent = <CompanyProfile token={currentUser.accessToken} onBack={() => navigateTo('home')} />
+      mainContent = (
+        <CompanyProfile
+          key={companyTab}
+          token={currentUser.accessToken}
+          initialTab={companyTab}
+          onBack={() => navigateTo('home')}
+        />
+      )
     } else {
       mainContent = <HomePage onViewJob={openJob} />
     }
@@ -446,12 +455,15 @@ function App() {
               )}
             </nav>
 
-            {currentUser?.role === 'seeker' && (
+            {(currentUser?.role === 'seeker' || currentUser?.role === 'employer') && (
               <NotificationBell
                 key={currentUser.id}
+                userId={currentUser.id}
+                role={currentUser.role}
                 accessToken={currentUser.accessToken}
                 profileVersion={profileVersion}
-                onNavigateCompany={(companyId) => navigate(`/company/${companyId}`)}
+                onOpenJob={openJob}
+                onOpenApplications={() => openCompany('applications')}
               />
             )}
 
@@ -491,7 +503,7 @@ function App() {
               <h2>Bạn cần hỗ trợ?</h2>
               <p>Gửi thắc mắc cho đội ngũ StuWork. Chúng tôi sẽ xem xét và phản hồi qua email.</p>
             </div>
-            <ContactForm onSubmitted={showNotice} />
+            <ContactForm currentUser={currentUser} onSubmitted={showNotice} />
           </div>
           <div className="page-shell footer-inner">
             <a className="brand footer-brand" href="#home">
@@ -523,6 +535,7 @@ function App() {
           : pageContent}
       </div>
       <ChatbotWidget
+        accessToken={currentUser?.accessToken}
         onViewCompany={(company) => navigate(`/company/${company.id}`)}
         onApplyJob={(job) => openJob(job.id)}
       />

@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft, Building2, Download, UsersRound, Check, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowLeft, Building2, BriefcaseBusiness, Download, UsersRound, Check, X } from 'lucide-react'
 import { apiRequest, downloadApiFile } from './api.js'
+import EmployerJobs from './EmployerJobs.jsx'
 
 const emptyCompany = { name: '', industry: '', size: '', address: '', website: '', description: '' }
 const sizeOptions = ['Dưới 50 nhân viên', '50 – 200 nhân viên', '200 – 1000 nhân viên', 'Trên 1000 nhân viên']
 
-function CompanyProfile({ token, onBack }) {
+function CompanyProfile({ token, onBack, initialTab = 'company' }) {
     const [company, setCompany] = useState(emptyCompany)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -14,9 +15,9 @@ function CompanyProfile({ token, onBack }) {
     const [applications, setApplications] = useState([])
     const [applicationError, setApplicationError] = useState('')
     const [applicationNotice, setApplicationNotice] = useState(null)
-    const [applicationLoading, setApplicationLoading] = useState(false)
+    const [applicationLoading, setApplicationLoading] = useState(initialTab === 'applications')
     const [busyApplicationId, setBusyApplicationId] = useState(null)
-    const [activeTab, setActiveTab] = useState('company')
+    const [activeTab, setActiveTab] = useState(initialTab)
 
     // Tải thông tin doanh nghiệp một lần khi mở trang
     useEffect(() => {
@@ -36,7 +37,7 @@ function CompanyProfile({ token, onBack }) {
         }
     }, [token])
 
-    const loadApplications = async () => {
+    const loadApplications = useCallback(async () => {
         setApplicationLoading(true)
         setApplicationError('')
         try {
@@ -47,7 +48,25 @@ function CompanyProfile({ token, onBack }) {
         } finally {
             setApplicationLoading(false)
         }
-    }
+    }, [token])
+
+    useEffect(() => {
+        if (initialTab !== 'applications') return undefined
+        let cancelled = false
+        apiRequest('employer/applications', { token })
+            .then((result) => {
+                if (!cancelled) setApplications(result.applications || [])
+            })
+            .catch((loadError) => {
+                if (!cancelled) setApplicationError(loadError.message || 'Không thể tải danh sách ứng viên.')
+            })
+            .finally(() => {
+                if (!cancelled) setApplicationLoading(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [initialTab, token])
 
     const decideApplication = async (application, decisionStatus) => {
         setBusyApplicationId(application.id)
@@ -121,9 +140,12 @@ function CompanyProfile({ token, onBack }) {
 
                 <div className="company-tabs" role="tablist" aria-label="Quản lý doanh nghiệp">
                     <button type="button" className={`company-tab${activeTab === 'company' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('company')}><Building2 size={16} /> Thông tin doanh nghiệp</button>
+                    <button type="button" className={`company-tab${activeTab === 'jobs' ? ' company-tab-active' : ''}`} onClick={() => setActiveTab('jobs')}><BriefcaseBusiness size={16} /> Tin tuyển dụng</button>
                     <button type="button" className={`company-tab${activeTab === 'applications' ? ' company-tab-active' : ''}`} onClick={() => { setActiveTab('applications'); loadApplications() }}><UsersRound size={16} /> Danh sách ứng viên</button>
                 </div>
-                {activeTab === 'applications' ? (
+                {activeTab === 'jobs' ? (
+                    <EmployerJobs token={token} />
+                ) : activeTab === 'applications' ? (
                     <section className="company-card company-applications">
                         <div className="company-card-heading">
                             <span className="company-card-icon"><UsersRound size={20} /></span>

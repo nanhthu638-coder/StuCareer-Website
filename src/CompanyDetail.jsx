@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowUpRight, BadgeCheck, BriefcaseBusiness, Building2, Mail
 import { motion, useReducedMotion } from 'framer-motion'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { requestApiJson } from './api.js'
-import { getCompanyById } from './data/mockCompanies.js'
+import { buildCompanyProfiles, loadCompanyProfiles } from './data/companyProfiles.js'
 import { toJobViewModel } from './jobViewModel.js'
 import './CompanyDetail.css'
 
@@ -12,11 +12,22 @@ function CompanyDetail() {
   const navigate = useNavigate()
   const { onViewJob } = useOutletContext()
   const shouldReduceMotion = useReducedMotion()
-  const company = getCompanyById(id)
+  const [profiles, setProfiles] = useState(null)
+  const company = profiles?.find((profile) => profile.id === id)
   const companyName = company?.name
   const [companyJobs, setCompanyJobs] = useState([])
   const [jobsLoading, setJobsLoading] = useState(true)
   const [jobsError, setJobsError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    loadCompanyProfiles()
+      .catch(() => [])
+      .then((dbCompanies) => {
+        if (!cancelled) setProfiles(buildCompanyProfiles(dbCompanies))
+      })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (!companyName) return undefined
@@ -43,13 +54,24 @@ function CompanyDetail() {
     return () => { cancelled = true }
   }, [companyName])
 
+  if (!profiles) {
+    return (
+      <main className="company-detail-page">
+        <div className="page-shell company-not-found" role="status">
+          <Building2 size={34} />
+          <p>Đang tải thông tin doanh nghiệp...</p>
+        </div>
+      </main>
+    )
+  }
+
   if (!company) {
     return (
       <main className="company-detail-page">
         <div className="page-shell company-not-found">
           <Building2 size={34} />
           <h1>Không tìm thấy doanh nghiệp</h1>
-          <p>Đường dẫn này không có trong dữ liệu doanh nghiệp mẫu.</p>
+          <p>Doanh nghiệp này không tồn tại hoặc chưa được cập nhật thông tin.</p>
           <button className="button button-primary" type="button" onClick={() => navigate('/')}>Quay lại trang chủ</button>
         </div>
       </main>

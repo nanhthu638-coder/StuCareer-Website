@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "db:seed:sprint3": "node --env-file=.env server/seed-sprint3.js",
     "db:seed:demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.demo server/seed-demo-data.js",
+    "db:seed:companies": "node --env-file-if-exists=.env --env-file-if-exists=.env.demo server/seed-company-accounts.js",
     "demo:result-email": "node --env-file=.env server/demo-result-email.js",
     "preview": "vite preview"
   },

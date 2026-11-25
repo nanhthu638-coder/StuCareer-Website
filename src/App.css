@@ -1257,13 +1257,14 @@ select:focus-visible {
   border-radius: 11px;
   background: #fff;
   box-shadow: 0 3px 12px rgb(27 61 57 / 2%);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
 }
 
-.category-card:hover {
+.category-card:hover,
+.category-card:focus-visible {
   border-color: #49a3a6;
-  box-shadow: 0 9px 23px rgb(35 105 96 / 10%);
-  transform: translateY(-3px);
+  box-shadow: 0 0 0 3px rgb(73 163 166 / 13%), 0 16px 30px rgb(35 105 96 / 15%);
+  transform: translateY(-4px);
 }
 
 .category-icon {
@@ -1272,6 +1273,12 @@ select:focus-visible {
   display: grid;
   place-items: center;
   border-radius: 10px;
+  transition: transform 260ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+.category-card:hover .category-icon,
+.category-card:focus-visible .category-icon {
+  transform: scale(1.1) rotate(-6deg);
 }
 
 .category-mint { color: #258a7e; background: #e2f4eb; }
@@ -1302,12 +1309,36 @@ select:focus-visible {
   top: 18px;
   right: 17px;
   color: #bdc9c4;
-  transition: color 180ms ease, transform 180ms ease;
+  opacity: .6;
+  transition: color 220ms ease, opacity 220ms ease, transform 220ms ease;
 }
 
-.category-card:hover .category-arrow {
+.category-card:hover .category-arrow,
+.category-card:focus-visible .category-arrow {
   color: #49a3a6;
-  transform: translate(2px, -2px);
+  opacity: 1;
+  transform: translate(4px, -4px);
+}
+
+.reveal {
+  opacity: 0;
+}
+
+.reveal.is-visible {
+  animation: reveal-up 450ms ease both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    translate: 0 22px;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 
 .company-strip {
@@ -1334,10 +1365,34 @@ select:focus-visible {
 
 .company-strip-list {
   width: min(700px, 100%);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.company-marquee-track {
+  width: max-content;
+  display: flex;
+  animation: company-marquee 30s linear infinite;
+}
+
+.company-strip-list:hover .company-marquee-track {
+  animation-play-state: paused;
+}
+
+.company-marquee-group {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 25px;
+}
+
+.company-marquee-group .company-wordmark {
+  flex: 0 0 auto;
+  padding: 0 27px;
+}
+
+@keyframes company-marquee {
+  to { transform: translateX(-50%); }
 }
 
 .company-wordmark {
@@ -3793,6 +3848,21 @@ select:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    animation: none !important;
+  }
+
+  .company-marquee-track {
+    animation: none !important;
+  }
+
+  .company-strip-list {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
   .page-transition {
     transition-duration: .01ms !important;
   }
@@ -4483,4 +4553,11 @@ select:focus-visible {
 .company-applicant-actions .button{display:inline-flex;align-items:center;gap:7px}
 .job-bookmark-button{display:inline-flex;align-items:center;gap:8px;margin:0 0 20px}
 .company-applications{width:100%}
+.company-jobs{width:100%}
+.company-jobs .company-actions{margin:0 0 16px}
+.company-jobs .company-actions .button{display:inline-flex;align-items:center;gap:7px}
+.company-job-hint{margin:0;color:#667085;font-size:14px}
+.company-job-form-actions{display:flex;gap:10px;flex-wrap:wrap}
+.admin-sections{margin-bottom:18px}
+.admin-actions .admin-note-input{min-width:260px}
 @media(max-width:640px){.company-applicant-heading{flex-direction:column}.company-applicant-actions .button{width:100%;justify-content:center}}
