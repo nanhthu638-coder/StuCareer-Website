@@ -41,23 +41,19 @@ Lưu ý: Để phân quyền dữ liệu trong phiên bản hiện tại, tên d
 - Nhân viên hỗ trợ (role `support`) vẫn dùng được trang hỗ trợ và cũng kích hoạt thông báo khi chuyển sang **Đã giải quyết**.
 - Cơ sở dữ liệu cũ tự thêm các cột `user_id`, `resolution_note`, `resolved_at`, `user_seen` khi máy chủ khởi động (SQLite và SQL Server).
 
-## 7. Chatbot đồng bộ với tin tuyển dụng
-- Chatbot lấy việc làm từ cùng nguồn với trang chủ (`/api/jobs`) và số slot còn lại từ `/api/jobs/availability`, tải lại mỗi khi bạn gửi tin nhắn.
-- Tăng/giảm slot, đăng tin mới (sau khi admin duyệt), ẩn, đóng hoặc xóa tin đều được phản ánh ngay. Thẻ việc làm hiển thị "Còn X/Y slot".
-- Tin đã hết slot hoặc quá hạn không được gợi ý; nếu chỉ còn tin hết chỗ, chatbot sẽ báo rõ.
-- Thẻ công ty liệt kê các vị trí đang còn slot. Công ty do nhà tuyển dụng tự tạo chưa có trang chi tiết riêng nên không có nút "Xem trang công ty".
-- Thông báo "Ting ting" dùng tin mới nhất thật thay vì nội dung cố định.
+## 7. Chatbot tư vấn và tìm kiếm dữ liệu mẫu
+- Chatbot trả lời tại trình duyệt bằng `chatKB`, không gửi câu hỏi tới dịch vụ AI. Các câu hỏi nối tiếp có thể kế thừa chủ đề và bộ lọc gần nhất.
+- Kết quả tìm việc và công ty lấy từ dữ liệu mẫu trong `src/jobsData.js` và `src/data/mockCompanies.js`, không phải danh sách tuyển dụng trực tiếp; hãy kiểm tra tin hiện tại trên trang chủ trước khi ứng tuyển.
+- Thông báo "Ting ting" vẫn dùng tin mới nhất từ máy chủ và kiểm tra lại tình trạng tin khi chọn "Xem ngay".
 
-## 7b. Thông tin doanh nghiệp đồng bộ lên trang công ty và chatbot
-- Thông tin nhà tuyển dụng lưu ở **Thông tin doanh nghiệp** (tên, lĩnh vực, quy mô, địa chỉ, website, giới thiệu) được công khai qua `GET /api/companies` và dùng chung cho **trang CompanyDetail** (`/company/<tên-công-ty>`) và **thẻ công ty của chatbot**. Lưu xong là cả hai cập nhật.
+## 7b. Thông tin doanh nghiệp trên trang công ty
+- Thông tin nhà tuyển dụng lưu ở **Thông tin doanh nghiệp** (tên, lĩnh vực, quy mô, địa chỉ, website, giới thiệu) được công khai qua `GET /api/companies` và dùng cho **trang CompanyDetail** (`/company/<tên-công-ty>`).
 - Công ty có hồ sơ mẫu (Shopee, FPT...) giữ logo, ảnh bìa, email và điện thoại mẫu; các trường nhà tuyển dụng đã điền sẽ được ưu tiên.
 - Đổi tên doanh nghiệp sẽ tự đổi tên công ty trên các tin của doanh nghiệp đó, nên nhà tuyển dụng không mất quyền quản lý tin.
 
-### Chatbot AI mở rộng
+### API chat tùy chọn
 
-- Các câu hỏi ngoài bộ chủ đề CV/phỏng vấn/việc làm được gửi tới `POST /api/chat`.
-- Khi chưa cấu hình AI, chatbot vẫn trả lời tại máy chủ về định hướng nghề nghiệp, portfolio, thư ứng tuyển, kỹ năng mềm và lộ trình học.
-- Để bật mô hình chat tương thích OpenAI, cấu hình trong `.env`:
+Widget chatbot không gọi `POST /api/chat`. API này vẫn có thể được cấu hình riêng để dùng mô hình chat tương thích OpenAI:
 
 ```env
 CHATBOT_API_URL=https://api.openai.com/v1/chat/completions

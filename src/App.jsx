@@ -565,7 +565,6 @@ function App() {
           : pageContent}
       </div>
       <ChatbotWidget
-        accessToken={currentUser?.accessToken}
         onViewCompany={(company) => navigate(`/company/${company.id}`)}
         onApplyJob={(job) => openJob(job.id)}
       />

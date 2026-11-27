@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ArrowUp,
@@ -11,179 +11,16 @@ import {
 } from 'lucide-react'
 import CompanyCard from './CompanyCard.jsx'
 import JobCard from './JobCard.jsx'
-import { requestApiJson } from '../../api.js'
-import { buildCompanies, isOpenJob, loadLiveData, newestOpenJob } from './liveJobs.js'
-import { intents, synonymGroups, welcomeReplies } from './mockData.js'
+import { isOpenJob, loadLiveData, newestOpenJob } from './liveJobs.js'
+import { welcomeReplies } from './mockData.js'
+import { getReply } from './chatEngine.js'
 import './ChatbotWidget.css'
-
-const socialResponse = intents.social.response
-const jobSearchStopWords = new Set([
-  'tìm', 'việc', 'làm', 'tuyển', 'dụng', 'intern', 'job', 'công', 'cho', 'mình', 'tôi', 'muốn',
-])
-const jobSearchAliases = { reactjs: 'react' }
 
 const welcomeMessage = {
   id: 'welcome',
   role: 'bot',
   text: 'Xin chào! Mình là Trợ lý AI của StuWork. Bạn đang cần hỗ trợ điều gì hôm nay?',
   quickReplies: welcomeReplies,
-}
-
-function normalizeInput(text) {
-  let normalized = String(text || '')
-    .toLocaleLowerCase('vi')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  const synonyms = synonymGroups.flatMap(({ canonical, aliases }) => (
-    aliases
-      .slice()
-      .sort((left, right) => right.length - left.length)
-      .map((alias) => ({ alias, canonical }))
-  )).sort((left, right) => right.alias.length - left.alias.length)
-
-  for (const { alias, canonical } of synonyms) {
-    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    normalized = normalized.replace(
-      new RegExp(`(^|\\s)${escapedAlias}(?=\\s|$)`, 'g'),
-      (_match, prefix) => `${prefix}${canonical}`,
-    )
-  }
-
-  return normalized.replace(/\s+/g, ' ').trim()
-}
-
-function containsPhrase(text, phrase) {
-  const normalizedPhrase = normalizeInput(phrase)
-  return ` ${text} `.includes(` ${normalizedPhrase} `)
-}
-
-function rankJob(job, searchTerms, includeIntern) {
-  const title = normalizeInput(job.title)
-  const company = normalizeInput(job.company)
-  const category = normalizeInput(job.category)
-  const details = normalizeInput([
-    job.description,
-    ...(job.requirements || []),
-    ...(job.benefits || []),
-  ].join(' '))
-  let score = 0
-
-  for (const term of searchTerms) {
-    if (title.includes(term)) score += 6
-    else if (category.includes(term)) score += 4
-    else if (company.includes(term)) score += 3
-    else if (details.includes(term)) score += 1
-  }
-
-  if (includeIntern && title.includes('intern')) score += 3
-  return score
-}
-
-// Chỉ gợi ý tin còn slot và còn hạn; nếu chỉ có tin đã hết chỗ thì báo riêng để người dùng không bấm vào tin không ứng tuyển được.
-function findMatchingJob(normalizedText, jobs) {
-  const terms = normalizedText
-    .split(' ')
-    .filter((term) => term && !jobSearchStopWords.has(term))
-    .map((term) => jobSearchAliases[term] || term)
-  if (terms.length === 0) return null
-
-  const includeIntern = normalizedText.split(' ').includes('intern')
-  const ranked = jobs
-    .map((job, index) => ({ job, index, score: rankJob(job, terms, includeIntern) }))
-    .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index)
-  const open = ranked.find((candidate) => isOpenJob(candidate.job))
-  if (open) return { job: open.job }
-  return ranked.length > 0 ? { unavailable: ranked[0].job } : null
-}
-
-function getBotResponse(text, jobs) {
-  const normalized = normalizeInput(text)
-  const hasCv = containsPhrase(normalized, 'cv')
-  const hasInterview = containsPhrase(normalized, 'phỏng vấn')
-
-  if (hasCv && hasInterview) {
-    return {
-      text: intents.multipleTopics.response,
-      emotion: 'happy',
-      quickReplies: intents.multipleTopics.quickReplies,
-    }
-  }
-
-  const helpActionResponse = intents.help.actionResponses[normalized]
-  if (helpActionResponse) return { text: helpActionResponse, emotion: 'happy' }
-
-  if (intents.help.keywords.some((keyword) => containsPhrase(normalized, keyword))) {
-    return {
-      text: intents.help.response,
-      emotion: 'happy',
-      quickReplies: intents.help.quickReplies,
-    }
-  }
-
-  const hasTopic = hasCv || hasInterview || containsPhrase(normalized, 'lương')
-  if (!hasTopic && intents.social.keywords.some((keyword) => containsPhrase(normalized, keyword))) {
-    return { text: socialResponse, emotion: 'happy' }
-  }
-
-  const hasExplicitJobIntent = intents.jobSearch.keywords.some((keyword) => containsPhrase(normalized, keyword))
-  const hasInternPositionSearch = normalized.startsWith(`${intents.jobSearch.internPrefix} `)
-    && !containsPhrase(normalized, 'lương')
-  if (hasExplicitJobIntent || hasInternPositionSearch) {
-    if (!jobs) {
-      return {
-        text: 'Mình chưa kết nối được dữ liệu việc làm lúc này. Bạn thử lại sau ít phút nhé.',
-        emotion: 'confused',
-        quickReplies: intents.jobSearch.quickReplies,
-      }
-    }
-    const match = findMatchingJob(normalized, jobs)
-    if (match?.job) return { job: match.job, emotion: 'happy' }
-    if (match?.unavailable) {
-      return {
-        text: `Vị trí “${match.unavailable.title}” tại ${match.unavailable.company} hiện đã hết slot hoặc hết hạn nộp hồ sơ. Bạn thử vị trí khác nhé.`,
-        emotion: 'happy',
-        quickReplies: intents.jobSearch.quickReplies,
-      }
-    }
-
-    const hasPositionTerms = normalized.split(' ').some((term) => !jobSearchStopWords.has(term))
-    return {
-      text: hasPositionTerms ? intents.jobSearch.noResults : intents.jobSearch.noPosition,
-      emotion: 'happy',
-      quickReplies: intents.jobSearch.quickReplies,
-    }
-  }
-
-  if (hasCv) {
-    const response = normalized.includes('mẫu cv it')
-      ? intents.cv.templates.it
-      : normalized.includes('mẫu cv marketing')
-        ? intents.cv.templates.marketing
-        : intents.cv.response
-    return { text: response, emotion: 'happy', quickReplies: intents.cv.quickReplies }
-  }
-
-  if (hasInterview) {
-    return { text: intents.interview.response, emotion: 'happy', quickReplies: intents.interview.quickReplies }
-  }
-
-  if (containsPhrase(normalized, 'lương')) {
-    const response = normalized.includes('lương it')
-      ? intents.salary.byField.it
-      : normalized.includes('lương marketing')
-        ? intents.salary.byField.marketing
-        : intents.salary.response
-    return { text: response, emotion: 'happy', quickReplies: intents.salary.quickReplies }
-  }
-
-  if (intents.greeting.keywords.some((keyword) => containsPhrase(normalized, keyword))) {
-    return { text: intents.greeting.response, emotion: 'happy' }
-  }
-
-  return { text: intents.fallback.response, emotion: 'confused' }
 }
 
 function BotAvatar({ emotion, className = '' }) {
@@ -203,19 +40,11 @@ function BotAvatar({ emotion, className = '' }) {
 
 function TypingIndicator() {
   return (
-    <div className="chatbot-typing" role="status" aria-label="Trợ lý đang soạn tin nhắn">
-      {[0, 1, 2].map((dot) => (
-        <motion.span
-          key={dot}
-          animate={{ y: [0, -4, 0], opacity: [0.45, 1, 0.45] }}
-          transition={{ duration: 0.65, repeat: Infinity, delay: dot * 0.14 }}
-        />
-      ))}
-    </div>
+    <div className="chatbot-bubble" role="status">Đang nhập...</div>
   )
 }
 
-function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () => {} }) {
+function ChatbotWidget({ onViewCompany = () => {}, onApplyJob = () => {} }) {
   const shouldReduceMotion = useReducedMotion()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([welcomeMessage])
@@ -229,7 +58,7 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
   const replyTimerRef = useRef(null)
-  const liveJobsRef = useRef(null)
+  const chatContextRef = useRef({})
 
   const addMessage = (message) => {
     setMessages((current) => [...current, { ...message, id: `chat-${crypto.randomUUID()}` }])
@@ -253,7 +82,6 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
         .then((liveData) => {
           const newest = newestOpenJob(liveData.jobs)
           if (cancelled || !newest) return
-          liveJobsRef.current = liveData
           addMessage({
             role: 'bot',
             text: `🔔 Ting ting! ${newest.company} vừa đăng tin tuyển ${newest.title}. Bạn có muốn xem không?`,
@@ -271,12 +99,6 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
     }
   }, [interactionVersion, isOpen, notificationSent])
 
-  const findCompany = (text, companies) => companies.find((company) => {
-    const normalized = normalizeInput(text)
-    return normalized.includes(company.name.toLocaleLowerCase('vi'))
-      || (company.hasPage && normalized.includes(company.id.split('-')[0]))
-  })
-
   const sendMessage = (messageText = input, file = attachment) => {
     const text = messageText.trim()
     if ((!text && !file) || isThinking) return
@@ -292,52 +114,17 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
     setBotEmotion('thinking')
     setIsThinking(true)
 
-    // Tải dữ liệu mới nhất trong lúc "đang soạn tin" để câu trả lời luôn khớp slot và tin hiện tại.
-    const dataPromise = loadLiveData()
-      .then((liveData) => {
-        liveJobsRef.current = liveData
-        return liveData
-      })
-      .catch(() => liveJobsRef.current)
-    replyTimerRef.current = window.setTimeout(async () => {
-      const liveData = await dataPromise
-      const matchedCompany = liveData ? findCompany(text, buildCompanies(liveData)) : null
-      if (matchedCompany) {
-        addMessage({ role: 'bot', company: matchedCompany })
-        setBotEmotion('happy')
-      } else {
-        let reply = getBotResponse(text, liveData?.jobs ?? null)
-        if (reply.emotion === 'confused' && text) {
-          try {
-            const result = await requestApiJson('/api/chat', {
-              method: 'POST',
-              accessToken,
-              body: {
-                message: text,
-                history: messages
-                  .filter((messageItem) => ['user', 'bot'].includes(messageItem.role) && messageItem.text)
-                  .slice(-8)
-                  .map((messageItem) => ({
-                    role: messageItem.role === 'bot' ? 'assistant' : 'user',
-                    content: messageItem.text,
-                  })),
-              },
-            })
-            reply = { text: result.reply, emotion: 'happy' }
-          } catch (error) {
-            reply = {
-              text: error.message || 'Trợ lý AI đang tạm thời gián đoạn. Bạn hãy thử lại sau ít phút.',
-              emotion: 'confused',
-            }
-          }
-        }
-        addMessage({ role: 'bot', ...reply })
-        setBotEmotion(reply.emotion)
-      }
+    replyTimerRef.current = window.setTimeout(() => {
+      const { context, ...reply } = text
+        ? getReply(text, chatContextRef.current)
+        : { text: 'Mình chưa thể đọc tệp đính kèm. Bạn hãy nhập câu hỏi nhé.', emotion: 'confused', context: chatContextRef.current }
+      chatContextRef.current = context
+      addMessage({ role: 'bot', ...reply })
+      setBotEmotion(reply.emotion)
       setIsThinking(false)
       recordInteraction()
       inputRef.current?.focus()
-    }, 1500)
+    }, 500 + Math.floor(Math.random() * 301))
   }
 
   const handleQuickReply = (reply, sourceMessageId) => {
@@ -352,12 +139,11 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
       setBotEmotion('happy')
       loadLiveData()
         .then((liveData) => {
-          liveJobsRef.current = liveData
           const fresh = liveData.jobs.find((job) => job.id === reply.job.id)
           if (fresh && isOpenJob(fresh)) addMessage({ role: 'bot', job: fresh })
           else addMessage({ role: 'bot', text: 'Vị trí này vừa hết slot hoặc không còn tuyển. Bạn thử vị trí khác nhé.' })
         })
-        .catch(() => addMessage({ role: 'bot', job: reply.job }))
+        .catch(() => addMessage({ role: 'bot', text: 'Mình chưa kiểm tra được tình trạng vị trí này. Bạn thử lại sau nhé.' }))
       return
     }
     if (reply.action === 'dismiss-notification') {
@@ -421,7 +207,13 @@ function ChatbotWidget({ accessToken, onViewCompany = () => {}, onApplyJob = () 
                 >
                   {message.role === 'bot' && <BotAvatar emotion={botEmotion} className="chatbot-message-avatar" />}
                   <div className="chatbot-message-content">
-                    {message.text && <div className="chatbot-bubble">{message.text}</div>}
+                    {message.text && (
+                      <div className="chatbot-bubble">
+                        {message.text.split('\n').map((line, index) => (
+                          <Fragment key={index}>{index > 0 && <br />}{line}</Fragment>
+                        ))}
+                      </div>
+                    )}
                     {message.attachmentName && <span className="chatbot-attachment-label"><Paperclip size={13} />{message.attachmentName}</span>}
                     {message.company && (
                       <CompanyCard company={message.company} onViewCompany={onViewCompany} />
